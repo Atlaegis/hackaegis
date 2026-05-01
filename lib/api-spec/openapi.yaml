@@ -3,20 +3,36 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: HackForge Hackathon Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication (participation code & admin)
+  - name: codes
+    description: Participation code management
+  - name: teams
+    description: Team management
+  - name: polls
+    description: Live poll management
+  - name: votes
+    description: Voting
+  - name: results
+    description: Transparent results & scores
+  - name: admin
+    description: Admin dashboard operations
+  - name: event
+    description: Event lifecycle management
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +40,507 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── AUTH ──────────────────────────────────────────────────────────────────
+  /auth/verify-code:
+    post:
+      operationId: verifyParticipationCode
+      tags: [auth]
+      summary: Verify a participation code and create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyCodeBody"
+      responses:
+        "200":
+          description: Code verified, session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "400":
+          description: Invalid or already-used code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/admin/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginBody"
+      responses:
+        "200":
+          description: Admin session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current session info
+      responses:
+        "200":
+          description: Current user session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current session
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  # ── CODES ─────────────────────────────────────────────────────────────────
+  /codes:
+    get:
+      operationId: listCodes
+      tags: [codes]
+      summary: List all participation codes (admin)
+      responses:
+        "200":
+          description: List of codes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParticipationCode"
+    post:
+      operationId: generateCodes
+      tags: [codes]
+      summary: Generate participation codes (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateCodesBody"
+      responses:
+        "201":
+          description: Codes generated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParticipationCode"
+
+  /codes/{code}/reset:
+    post:
+      operationId: resetCode
+      tags: [codes]
+      summary: Reset a participation code (admin)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Code reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParticipationCode"
+
+  /codes/{code}:
+    delete:
+      operationId: deleteCode
+      tags: [codes]
+      summary: Delete a participation code (admin)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Code deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /codes/stats:
+    get:
+      operationId: getCodeStats
+      tags: [codes]
+      summary: Get code usage statistics (admin)
+      responses:
+        "200":
+          description: Code stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeStats"
+
+  # ── TEAMS ─────────────────────────────────────────────────────────────────
+  /teams:
+    get:
+      operationId: listTeams
+      tags: [teams]
+      summary: List all teams
+      responses:
+        "200":
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a team (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamBody"
+      responses:
+        "201":
+          description: Team created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /teams/{id}:
+    put:
+      operationId: updateTeam
+      tags: [teams]
+      summary: Update a team (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamBody"
+      responses:
+        "200":
+          description: Team updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+    delete:
+      operationId: deleteTeam
+      tags: [teams]
+      summary: Delete a team (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Team deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /teams/leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [teams]
+      summary: Get live vote leaderboard
+      responses:
+        "200":
+          description: Team leaderboard with vote counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
+
+  # ── POLLS ─────────────────────────────────────────────────────────────────
+  /polls:
+    get:
+      operationId: listPolls
+      tags: [polls]
+      summary: List all polls (admin)
+      responses:
+        "200":
+          description: List of polls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Poll"
+    post:
+      operationId: createPoll
+      tags: [polls]
+      summary: Create a new poll (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePollBody"
+      responses:
+        "201":
+          description: Poll created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Poll"
+
+  /polls/active:
+    get:
+      operationId: getActivePoll
+      tags: [polls]
+      summary: Get the currently active poll
+      responses:
+        "200":
+          description: Active poll with results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollWithResults"
+        "404":
+          description: No active poll
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /polls/{id}/activate:
+    post:
+      operationId: activatePoll
+      tags: [polls]
+      summary: Activate a poll (admin — deactivates any other active poll)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Poll activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Poll"
+
+  /polls/{id}/deactivate:
+    post:
+      operationId: deactivatePoll
+      tags: [polls]
+      summary: Deactivate a poll (admin — freeze results)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Poll deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Poll"
+
+  /polls/{id}/results:
+    get:
+      operationId: getPollResults
+      tags: [polls]
+      summary: Get poll results with vote breakdown
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Poll results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollWithResults"
+
+  # ── VOTES ─────────────────────────────────────────────────────────────────
+  /votes:
+    post:
+      operationId: castVote
+      tags: [votes]
+      summary: Cast a vote for a team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CastVoteBody"
+      responses:
+        "201":
+          description: Vote cast
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vote"
+        "409":
+          description: Already voted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: No active poll or invalid team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /votes/my-vote:
+    get:
+      operationId: getMyVote
+      tags: [votes]
+      summary: Check if current user has voted in active poll
+      responses:
+        "200":
+          description: Current user vote status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyVoteStatus"
+
+  # ── RESULTS ───────────────────────────────────────────────────────────────
+  /results:
+    get:
+      operationId: getPublicResults
+      tags: [results]
+      summary: Get published transparent results (public)
+      responses:
+        "200":
+          description: Published results with score breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicResults"
+
+  /results/export:
+    get:
+      operationId: exportResults
+      tags: [results]
+      summary: Export vote results as CSV (admin)
+      responses:
+        "200":
+          description: CSV data
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ── EVENT ─────────────────────────────────────────────────────────────────
+  /event/status:
+    get:
+      operationId: getEventStatus
+      tags: [event]
+      summary: Get current event status and stream URL
+      responses:
+        "200":
+          description: Event status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventStatus"
+    put:
+      operationId: updateEventStatus
+      tags: [event]
+      summary: Update event status and stream URL (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventStatusBody"
+      responses:
+        "200":
+          description: Event status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventStatus"
+
+  # ── ADMIN DASHBOARD ───────────────────────────────────────────────────────
+  /admin/dashboard:
+    get:
+      operationId: getAdminDashboard
+      tags: [admin]
+      summary: Admin dashboard summary stats
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboard"
+
+  /admin/logs:
+    get:
+      operationId: getAdminLogs
+      tags: [admin]
+      summary: Get admin action logs
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminLog"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +548,368 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required: [error, message]
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required: [success, message]
+
+    VerifyCodeBody:
+      type: object
+      properties:
+        code:
+          type: string
+      required: [code]
+
+    AdminLoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required: [email, password]
+
+    AuthSession:
+      type: object
+      properties:
+        token:
+          type: string
+        participantCode:
+          type: string
+        hasVoted:
+          type: boolean
+      required: [token, participantCode, hasVoted]
+
+    AdminAuthSession:
+      type: object
+      properties:
+        token:
+          type: string
+        email:
+          type: string
+        isAdmin:
+          type: boolean
+      required: [token, email, isAdmin]
+
+    MeResponse:
+      type: object
+      properties:
+        isAdmin:
+          type: boolean
+        participantCode:
+          type: string
+        hasVoted:
+          type: boolean
+      required: [isAdmin]
+
+    ParticipationCode:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        isUsed:
+          type: boolean
+        usedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, code, isUsed, createdAt]
+
+    GenerateCodesBody:
+      type: object
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          maximum: 500
+      required: [count]
+
+    CodeStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        used:
+          type: integer
+        unused:
+          type: integer
+      required: [total, used, unused]
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        projectTitle:
+          type: string
+        description:
+          type: string
+          nullable: true
+        githubUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, projectTitle, createdAt]
+
+    CreateTeamBody:
+      type: object
+      properties:
+        name:
+          type: string
+        projectTitle:
+          type: string
+        description:
+          type: string
+          nullable: true
+        githubUrl:
+          type: string
+          nullable: true
+      required: [name, projectTitle]
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        teamId:
+          type: integer
+        teamName:
+          type: string
+        projectTitle:
+          type: string
+        voteCount:
+          type: integer
+        percentage:
+          type: number
+      required: [teamId, teamName, projectTitle, voteCount, percentage]
+
+    Poll:
+      type: object
+      properties:
+        id:
+          type: integer
+        question:
+          type: string
+        isActive:
+          type: boolean
+        isFrozen:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        totalVotes:
+          type: integer
+      required: [id, question, isActive, isFrozen, createdAt, totalVotes]
+
+    PollWithResults:
+      type: object
+      properties:
+        id:
+          type: integer
+        question:
+          type: string
+        isActive:
+          type: boolean
+        isFrozen:
+          type: boolean
+        totalVotes:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PollResult"
+      required: [id, question, isActive, isFrozen, totalVotes, results]
+
+    PollResult:
+      type: object
+      properties:
+        teamId:
+          type: integer
+        teamName:
+          type: string
+        projectTitle:
+          type: string
+        voteCount:
+          type: integer
+        percentage:
+          type: number
+      required: [teamId, teamName, projectTitle, voteCount, percentage]
+
+    CreatePollBody:
+      type: object
+      properties:
+        question:
+          type: string
+      required: [question]
+
+    CastVoteBody:
+      type: object
+      properties:
+        teamId:
+          type: integer
+      required: [teamId]
+
+    Vote:
+      type: object
+      properties:
+        id:
+          type: integer
+        teamId:
+          type: integer
+        teamName:
+          type: string
+        pollId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, teamId, teamName, pollId, createdAt]
+
+    MyVoteStatus:
+      type: object
+      properties:
+        hasVoted:
+          type: boolean
+        votedForTeamId:
+          type: integer
+          nullable: true
+        votedForTeamName:
+          type: string
+          nullable: true
+      required: [hasVoted]
+
+    PublicResults:
+      type: object
+      properties:
+        isPublished:
+          type: boolean
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        winner:
+          $ref: "#/components/schemas/TeamResult"
+          nullable: true
+        rankedTeams:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamResult"
+      required: [isPublished, rankedTeams]
+
+    TeamResult:
+      type: object
+      properties:
+        rank:
+          type: integer
+        teamId:
+          type: integer
+        teamName:
+          type: string
+        projectTitle:
+          type: string
+        voteCount:
+          type: integer
+        percentage:
+          type: number
+      required: [rank, teamId, teamName, projectTitle, voteCount, percentage]
+
+    EventStatus:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [registration, submission, shortlisting, elimination, finale, results, closed]
+        streamUrl:
+          type: string
+          nullable: true
+        streamActive:
+          type: boolean
+        resultsPublished:
+          type: boolean
+        eventName:
+          type: string
+        tagline:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required: [phase, streamActive, resultsPublished, eventName, tagline, updatedAt]
+
+    UpdateEventStatusBody:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [registration, submission, shortlisting, elimination, finale, results, closed]
+        streamUrl:
+          type: string
+          nullable: true
+        streamActive:
+          type: boolean
+        resultsPublished:
+          type: boolean
+        eventName:
+          type: string
+        tagline:
+          type: string
+
+    AdminDashboard:
+      type: object
+      properties:
+        totalCodes:
+          type: integer
+        usedCodes:
+          type: integer
+        unusedCodes:
+          type: integer
+        totalTeams:
+          type: integer
+        totalVotes:
+          type: integer
+        activeParticipants:
+          type: integer
+        activePollQuestion:
+          type: string
+          nullable: true
+        currentPhase:
+          type: string
+        streamActive:
+          type: boolean
+      required: [totalCodes, usedCodes, unusedCodes, totalTeams, totalVotes, activeParticipants, currentPhase, streamActive]
+
+    AdminLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+        details:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, action, createdAt]

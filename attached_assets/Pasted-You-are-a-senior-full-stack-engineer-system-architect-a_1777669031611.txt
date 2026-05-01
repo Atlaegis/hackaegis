@@ -1,0 +1,193 @@
+You are a senior full-stack engineer, system architect, and hackathon platform designer.
+
+Build a production-ready web application for a hackathon final round with the following core features:
+
+========================
+🎯 CORE GOAL
+============
+
+Create a platform where:
+
+* Only verified participants can access the live stream
+* Participants must enter a unique participation code
+* After verification, they can watch the stream and vote
+* Voting is real-time and restricted to one vote per participant
+* Admin can control the entire event live
+
+========================
+🧱 SYSTEM MODULES
+=================
+
+1. PUBLIC ACCESS SYSTEM
+
+* Landing page with event branding
+* Input field for participation code
+* Validation system for codes
+* Error handling (invalid / used code)
+
+2. AUTH & SESSION SYSTEM
+
+* Validate participation code from database
+* Generate session (JWT or secure cookie)
+* Persist login (localStorage + backend validation)
+* Prevent re-login spam
+* Allow admin reset
+
+3. PRIVATE WATCH SYSTEM
+
+* Protected route (/watch)
+* Embed live stream (YouTube Live iframe)
+* Poll UI visible only after verification
+* Show "Verified Participant" badge
+* Handle no-stream / waiting state
+
+4. REAL-TIME POLL SYSTEM
+
+* One active poll at a time
+* List of teams as options
+* One vote per user
+* Store vote securely
+* Real-time updates using WebSocket / Supabase Realtime
+* Show live percentage + vote count
+
+5. PARTICIPATION CODE SYSTEM
+
+* Generate unique codes (HACK-XXXX)
+* Store: code, is_used, user_session
+* Mark code as used after login
+* Option to reset code (admin)
+* Prevent reuse
+
+6. ADMIN DASHBOARD
+
+* Secure admin login
+* Manage codes (create / delete / reset)
+* Create and control polls
+* See live votes
+* Export results (CSV)
+* Control event status (start / stop poll)
+
+7. EVENT FLOW SYSTEM
+   Support full lifecycle:
+
+* Registration
+* Code generation
+* Shortlisting teams
+* Final round (top 10 teams)
+* Live streaming
+* Live voting
+* Result freeze
+* Result announcement
+
+========================
+🗄️ DATABASE DESIGN
+===================
+
+Tables:
+
+* users (id, code, has_voted)
+* codes (code, is_used)
+* sessions (user_id, token)
+* teams (id, name)
+* polls (id, question, active)
+* votes (id, user_id, team_id)
+* admins (id, email, password)
+* logs (action, timestamp)
+
+Constraints:
+
+* One vote per user
+* Code must be unique
+* Poll must be single active
+
+========================
+⚙️ TECH STACK
+=============
+
+Frontend:
+
+* Next.js (React)
+* Tailwind CSS
+
+Backend:
+
+* Supabase (Auth + DB + Realtime)
+
+Streaming:
+
+* YouTube Live (embed iframe)
+
+Realtime:
+
+* Supabase Realtime
+
+Deployment:
+
+* Vercel
+
+Optional:
+
+* Email (Resend / Brevo)
+* Code distribution via Google Sheets
+
+========================
+🔐 SECURITY RULES
+=================
+
+* Validate all actions from backend
+* Prevent duplicate votes
+* Protect admin routes
+* Sanitize inputs
+* Rate limit vote endpoint
+
+========================
+📺 STREAM FLOW
+==============
+
+OBS → YouTube Live (RTMP) → Embed in website
+
+========================
+🗳️ VOTING FLOW
+===============
+
+User clicks vote → API → DB update → Realtime broadcast → UI updates
+
+========================
+📦 FEATURES
+===========
+
+* Live chart updates
+* Mobile responsive UI
+* Error states
+* Loading states
+* Session persistence
+* Admin analytics
+
+========================
+📁 DELIVERABLES
+===============
+
+* Full project structure
+* Database schema
+* API endpoints
+* UI components
+* Realtime logic
+* Admin panel
+* Deployment steps
+* Event-day checklist
+
+Build it as an MVP but scalable for future hackathons.
+
+
+COMPLETE SYSTEM FLOW (REAL-WORLD)
+👤 USER FLOW
+1. User opens website
+2. Enters participation code
+3. Backend verifies code
+4. Session created
+5. Redirect to /watch
+6. Stream loads
+7. Poll unlocks
+8. User votes
+9. Vote stored
+10. Live results update for all users
