@@ -1,19 +1,18 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, participationCodesTable, sessionsTable, teamsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import {
-  VerifyParticipationCodeBody,
-  AdminLoginBody,
-} from "@workspace/api-zod";
+import { VerifyParticipationCodeBody } from "@workspace/api-zod";
 import { generateToken, extractToken, getSessionFromToken } from "../lib/auth";
+import { authRateLimit } from "../middlewares/rateLimiter";
 
 const router: IRouter = Router();
 
 // ─── Unified Code Login ───────────────────────────────────────────────────────
-router.post("/auth/login", async (req: Request, res: Response) => {
+router.post("/auth/login", authRateLimit, async (req: Request, res: Response) => {
   const rawCode = (req.body?.code ?? "").toString().trim().toUpperCase();
-  if (!rawCode) {
-    res.status(400).json({ error: "validation_error", message: "Code is required" });
+
+  if (!rawCode || rawCode.length < 4 || rawCode.length > 80) {
+    res.status(400).json({ error: "validation_error", message: "Invalid code format" });
     return;
   }
 
@@ -70,7 +69,7 @@ router.post("/auth/login", async (req: Request, res: Response) => {
 });
 
 // ─── Legacy participant code verify (kept for OpenAPI compat) ────────────────
-router.post("/auth/verify-code", async (req: Request, res: Response) => {
+router.post("/auth/verify-code", authRateLimit, async (req: Request, res: Response) => {
   const parse = VerifyParticipationCodeBody.safeParse(req.body);
   if (!parse.success) {
     res.status(400).json({ error: "validation_error", message: "Invalid request body" });
@@ -102,29 +101,6 @@ router.post("/auth/verify-code", async (req: Request, res: Response) => {
   await db.insert(sessionsTable).values({ token, codeId: found.id, isAdmin: false, isJudge: false });
 
   res.json({ token, participantCode: normalizedCode, hasVoted: false });
-});
-
-// ─── Legacy admin login (kept for OpenAPI compat) ───────────────────────────
-router.post("/auth/admin/login", async (req: Request, res: Response) => {
-  const parse = AdminLoginBody.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: "validation_error", message: "Invalid request body" });
-    return;
-  }
-
-  const [adminCode] = await db
-    .select()
-    .from(participationCodesTable)
-    .where(eq(participationCodesTable.role, "admin"));
-
-  if (!adminCode) {
-    res.status(401).json({ error: "invalid_credentials", message: "No admin configured" });
-    return;
-  }
-
-  const token = generateToken();
-  await db.insert(sessionsTable).values({ token, codeId: adminCode.id, isAdmin: true, isJudge: false });
-  res.json({ token, email: parse.data.email, isAdmin: true });
 });
 
 // ─── Session info ─────────────────────────────────────────────────────────────

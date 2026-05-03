@@ -1419,7 +1419,6 @@ export default function Admin() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm text-center space-y-6">
           <div className="flex justify-center"><div className="bg-primary/10 p-4 rounded-full border border-primary/20"><Terminal className="w-10 h-10 text-primary" /></div></div>
           <div><h2 className="font-mono text-2xl font-bold">ADMIN ACCESS</h2><p className="text-muted-foreground mt-2 text-sm">Enter your admin code on the home page to access this panel.</p></div>
-          <div className="bg-muted/40 rounded-lg p-3 font-mono text-sm text-chart-4">HACKFORGE_ADMIN@01</div>
           <Button className="w-full" onClick={() => setLocation("/")}>Go to Home Page</Button>
         </motion.div>
       </div>

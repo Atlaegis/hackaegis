@@ -19,7 +19,13 @@ async function logAction(action: string, details?: string) {
   await db.insert(adminLogsTable).values({ action, details: details ?? null });
 }
 
-function formatHackathon(h: typeof hackathonsTable.$inferSelect) {
+type HackathonRow = typeof hackathonsTable.$inferSelect & {
+  jitsiRoom?: string | null;
+  meetMode?: string;
+  jitsiPassword?: string | null;
+};
+
+function formatHackathon(h: HackathonRow, includeSecrets = false) {
   return {
     id: h.id,
     name: h.name,
@@ -35,9 +41,10 @@ function formatHackathon(h: typeof hackathonsTable.$inferSelect) {
     prizePool: h.prizePool ?? null,
     grandPrize: h.grandPrize ?? null,
     submissionLocked: h.submissionLocked,
-    jitsiRoom: (h as typeof h & { jitsiRoom?: string | null }).jitsiRoom ?? null,
-    meetMode: (h as typeof h & { meetMode?: string }).meetMode ?? "youtube",
-    jitsiPassword: (h as typeof h & { jitsiPassword?: string | null }).jitsiPassword ?? null,
+    jitsiRoom: h.jitsiRoom ?? null,
+    meetMode: h.meetMode ?? "youtube",
+    // Only admin responses include the Jitsi password
+    ...(includeSecrets ? { jitsiPassword: h.jitsiPassword ?? null } : {}),
     createdAt: h.createdAt.toISOString(),
     updatedAt: h.updatedAt.toISOString(),
   };
@@ -46,22 +53,26 @@ function formatHackathon(h: typeof hackathonsTable.$inferSelect) {
 // ─── Public: list all hackathons ─────────────────────────────────────────────
 router.get("/hackathons", async (_req: Request, res: Response) => {
   const hackathons = await db.select().from(hackathonsTable).orderBy(desc(hackathonsTable.createdAt));
-  res.json(hackathons.map(formatHackathon));
+  res.json(hackathons.map((h) => formatHackathon(h as HackathonRow, false)));
 });
 
 // ─── Public: get active hackathon ────────────────────────────────────────────
-router.get("/hackathons/active", async (_req: Request, res: Response) => {
+router.get("/hackathons/active", async (req: Request, res: Response) => {
+  const token = extractToken(req.headers.authorization);
+  const session = await getSessionFromToken(token);
+  const isPrivileged = !!(session?.isAdmin || session?.isJudge);
+
   const [hackathon] = await db.select().from(hackathonsTable).where(eq(hackathonsTable.status, "active")).orderBy(desc(hackathonsTable.id));
   if (!hackathon) {
     res.status(404).json({ error: "not_found", message: "No active hackathon" });
     return;
   }
-  res.json(formatHackathon(hackathon));
+  res.json(formatHackathon(hackathon as HackathonRow, isPrivileged));
 });
 
 // ─── Public: get hackathon by slug with results ───────────────────────────────
 router.get("/hackathons/:slug", async (req: Request, res: Response) => {
-  const slug = String(req.params.slug);
+  const slug = String(req.params.slug).slice(0, 100);
   const [hackathon] = await db.select().from(hackathonsTable).where(eq(hackathonsTable.slug, slug));
   if (!hackathon) {
     res.status(404).json({ error: "not_found", message: "Hackathon not found" });
@@ -122,7 +133,7 @@ router.get("/hackathons/:slug", async (req: Request, res: Response) => {
     .map((t, i) => ({ ...t, rank: i + 1 }));
 
   res.json({
-    hackathon: formatHackathon(hackathon),
+    hackathon: formatHackathon(hackathon as HackathonRow, false),
     isPublished: hackathon.resultsPublished,
     totalTeams: teams.length,
     totalJudges: judgeCodes.length,
@@ -159,7 +170,7 @@ router.post("/hackathons", async (req: Request, res: Response) => {
   }).returning();
 
   await logAction("create_hackathon", `Created hackathon: ${name}`);
-  res.status(201).json(formatHackathon(hackathon));
+  res.status(201).json(formatHackathon(hackathon as HackathonRow, true));
 });
 
 // ─── Admin: update hackathon ──────────────────────────────────────────────────
@@ -219,7 +230,7 @@ router.put("/hackathons/:id", async (req: Request, res: Response) => {
   }
 
   await logAction("update_hackathon", `Updated hackathon: ${updated.name} → status=${updated.status}, phase=${updated.phase}`);
-  res.json(formatHackathon(updated));
+  res.json(formatHackathon(updated as HackathonRow, true));
 });
 
 // ─── Admin: set active hackathon ─────────────────────────────────────────────
@@ -253,7 +264,7 @@ router.post("/hackathons/:id/activate", async (req: Request, res: Response) => {
   }
 
   await logAction("activate_hackathon", `Activated hackathon: ${updated.name}`);
-  res.json(formatHackathon(updated));
+  res.json(formatHackathon(updated as HackathonRow, true));
 });
 
 // ─── Admin: archive (complete) hackathon ─────────────────────────────────────
@@ -263,7 +274,7 @@ router.post("/hackathons/:id/complete", async (req: Request, res: Response) => {
   const [updated] = await db.update(hackathonsTable).set({ status: "completed", updatedAt: new Date() }).where(eq(hackathonsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "not_found" }); return; }
   await logAction("complete_hackathon", `Completed hackathon: ${updated.name}`);
-  res.json(formatHackathon(updated));
+  res.json(formatHackathon(updated as HackathonRow, true));
 });
 
 // ─── Admin: delete hackathon ──────────────────────────────────────────────────

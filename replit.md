@@ -123,10 +123,26 @@ Tables:
 - `POST /api/votes`, `GET /api/votes/my-vote`
 - `GET|PUT /api/event/status`
 
+### Auth Model (updated)
+- **Participant**: `HACKFORGE_PART_XXXXXXXXXX` (10-char random suffix, single-use)
+- **Admin**: reusable codes stored in DB (no format hint exposed in UI)
+- **Judge**: `HACKFORGE_JUDGE_XXXXXX` (6-char random suffix, non-sequential)
+
+### Security Hardening (applied)
+- **Rate limiting**: `POST /api/auth/login` + `POST /api/auth/verify-code` → 10 req/15 min per IP; `POST /api/register` → 5 req/hour; global → 300 req/min (`express-rate-limit`)
+- **Security headers**: Helmet.js — CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.
+- **Body size limit**: 50 KB max for all request bodies (returns 413)
+- **Session expiry**: Sessions expire after 24 hours (checked in `getSessionFromToken`)
+- **Token entropy**: Tokens are 48 random bytes (hex), not 32
+- **jitsiPassword hidden from public**: Only returned to admin/judge in `/api/hackathons/active`; never in public list/slug endpoints
+- **No hardcoded admin code in UI**: Removed the `HACKFORGE_ADMIN@01` hint from the admin access page
+- **Legacy broken route removed**: `POST /api/auth/admin/login` (which bypassed code check) is gone → returns 404
+- **Non-enumerable judge codes**: Judge codes use random 6-char suffix, not sequential `@01/@02`
+- **Input sanitization on registration**: Length limits on all string fields (fullName≤120, email≤200, teamName≤100, notes≤1000), paymentMode allowlisted
+
 ### Seed Data (dev)
 - 2 hackathons: HackForge 2024 (completed, results published), HackForge 2025 (active, registration phase)
-- Admin code: `HACKFORGE_ADMIN@01`
-- Judge codes: `HACKFORGE_JUDGE@01`, `HACKFORGE_JUDGE@02`, `HACKFORGE_JUDGE@03`
+- Admin code: see DB (not documented here for security)
 - 5 teams: BitCraft, Quantum Coders, Syntax Squad, The Builders, Team Nexus (all in HackForge 2025)
 
 ### Notes

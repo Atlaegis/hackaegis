@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, registrationsTable, participationCodesTable, adminLogsTable, hackathonsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { extractToken, getSessionFromToken } from "../lib/auth";
+import { extractToken, getSessionFromToken, generateParticipantCode } from "../lib/auth";
+import { registrationRateLimit } from "../middlewares/rateLimiter";
 
 const router: IRouter = Router();
 
@@ -19,46 +20,65 @@ async function logAction(action: string, details?: string) {
   await db.insert(adminLogsTable).values({ action, details: details ?? null });
 }
 
-function generateParticipantCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "HACKFORGE_PART_";
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
+function sanitizeString(val: unknown, maxLen: number): string {
+  return String(val ?? "").trim().slice(0, maxLen);
 }
 
 // ─── Public: submit registration ─────────────────────────────────────────────
-router.post("/register", async (req: Request, res: Response) => {
+router.post("/register", registrationRateLimit, async (req: Request, res: Response) => {
   const { hackathonId, fullName, email, teamName, phone, memberCount, paymentMode, notes } = req.body ?? {};
 
-  if (!fullName || !email || !teamName) {
+  const cleanFullName = sanitizeString(fullName, 120);
+  const cleanEmail = sanitizeString(email, 200).toLowerCase();
+  const cleanTeamName = sanitizeString(teamName, 100);
+  const cleanPhone = phone ? sanitizeString(phone, 30) : null;
+  const cleanNotes = notes ? sanitizeString(notes, 1000) : null;
+  const cleanPaymentMode = ["offline", "upi", "online"].includes(String(paymentMode)) ? String(paymentMode) : "offline";
+  const cleanMemberCount = typeof memberCount === "number" && memberCount >= 1 && memberCount <= 10
+    ? memberCount
+    : typeof memberCount === "string" && !isNaN(Number(memberCount))
+      ? Math.min(Math.max(1, parseInt(memberCount, 10)), 10)
+      : 1;
+
+  if (!cleanFullName || !cleanEmail || !cleanTeamName) {
     res.status(400).json({ error: "validation_error", message: "fullName, email, and teamName are required" });
     return;
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     res.status(400).json({ error: "validation_error", message: "Invalid email address" });
     return;
   }
 
-  let resolvedHackathonId: number | null = hackathonId ?? null;
-  if (!resolvedHackathonId) {
+  if (cleanTeamName.length < 2) {
+    res.status(400).json({ error: "validation_error", message: "Team name must be at least 2 characters" });
+    return;
+  }
+
+  if (cleanFullName.length < 2) {
+    res.status(400).json({ error: "validation_error", message: "Full name must be at least 2 characters" });
+    return;
+  }
+
+  let resolvedHackathonId: number | null = hackathonId ? parseInt(String(hackathonId), 10) : null;
+  if (!resolvedHackathonId || isNaN(resolvedHackathonId)) {
     const [active] = await db.select({ id: hackathonsTable.id }).from(hackathonsTable).where(eq(hackathonsTable.status, "active")).orderBy(desc(hackathonsTable.id));
     resolvedHackathonId = active?.id ?? null;
   }
 
   const [reg] = await db.insert(registrationsTable).values({
     hackathonId: resolvedHackathonId,
-    fullName: String(fullName).trim(),
-    email: String(email).trim().toLowerCase(),
-    teamName: String(teamName).trim(),
-    phone: phone ? String(phone).trim() : null,
-    memberCount: typeof memberCount === "number" ? memberCount : 1,
-    paymentMode: paymentMode ?? "offline",
+    fullName: cleanFullName,
+    email: cleanEmail,
+    teamName: cleanTeamName,
+    phone: cleanPhone,
+    memberCount: cleanMemberCount,
+    paymentMode: cleanPaymentMode,
     paymentStatus: "pending",
-    notes: notes ? String(notes).trim() : null,
+    notes: cleanNotes,
   }).returning();
 
-  await logAction("registration_submitted", `Team: ${teamName}, Email: ${email}`);
+  await logAction("registration_submitted", `Team: ${cleanTeamName}, Email: ${cleanEmail}`);
   res.status(201).json({ id: reg.id, message: "Registration submitted. Admin will review and assign your code." });
 });
 
@@ -88,6 +108,11 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
   if (!(await requireAdmin(req, res))) return;
 
   const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
+
   const [reg] = await db.select().from(registrationsTable).where(eq(registrationsTable.id, id));
   if (!reg) {
     res.status(404).json({ error: "not_found", message: "Registration not found" });
@@ -102,7 +127,7 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
   // Generate a unique participant code
   let code = generateParticipantCode();
   let attempts = 0;
-  while (attempts < 10) {
+  while (attempts < 20) {
     const [existing] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.code, code));
     if (!existing) break;
     code = generateParticipantCode();
@@ -124,7 +149,7 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
     .where(eq(registrationsTable.id, id))
     .returning();
 
-  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code: ${code}`);
+  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code assigned`);
   res.json({ message: "Approved", code: updated.participantCode, registration: updated });
 });
 
@@ -133,6 +158,11 @@ router.post("/admin/registrations/:id/reject", async (req: Request, res: Respons
   if (!(await requireAdmin(req, res))) return;
 
   const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
+
   const [updated] = await db.update(registrationsTable)
     .set({ paymentStatus: "rejected" })
     .where(eq(registrationsTable.id, id))

@@ -29,7 +29,7 @@ router.get("/codes", async (req: Request, res: Response) => {
     .where(eq(participationCodesTable.role, "participant"))
     .orderBy(participationCodesTable.createdAt);
   res.json(codes.map((c) => ({
-    id: c.id, code: c.code, isUsed: c.isUsed,
+    id: c.id, code: c.code, label: c.label ?? null, isUsed: c.isUsed,
     usedAt: c.usedAt?.toISOString() ?? null,
     createdAt: c.createdAt.toISOString(),
   })));
@@ -68,7 +68,7 @@ router.post("/codes", async (req: Request, res: Response) => {
 // ─── Reset a participant code ─────────────────────────────────────────────────
 router.post("/codes/:code/reset", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const code = String(req.params.code);
+  const code = String(req.params.code).slice(0, 80);
   const [updated] = await db
     .update(participationCodesTable)
     .set({ isUsed: false, usedAt: null })
@@ -78,14 +78,14 @@ router.post("/codes/:code/reset", async (req: Request, res: Response) => {
     res.status(404).json({ error: "not_found", message: "Code not found" });
     return;
   }
-  await logAction("reset_code", `Reset code ${code}`);
+  await logAction("reset_code", `Reset participant code`);
   res.json({ id: updated.id, code: updated.code, isUsed: updated.isUsed, usedAt: null, createdAt: updated.createdAt.toISOString() });
 });
 
 // ─── Delete a participant code ────────────────────────────────────────────────
 router.delete("/codes/:code", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const code = String(req.params.code);
+  const code = String(req.params.code).slice(0, 80);
   const [deleted] = await db
     .delete(participationCodesTable)
     .where(and(eq(participationCodesTable.code, code), eq(participationCodesTable.role, "participant")))
@@ -94,7 +94,7 @@ router.delete("/codes/:code", async (req: Request, res: Response) => {
     res.status(404).json({ error: "not_found", message: "Code not found" });
     return;
   }
-  await logAction("delete_code", `Deleted code ${code}`);
+  await logAction("delete_code", `Deleted participant code`);
   res.json({ success: true, message: "Code deleted" });
 });
 
@@ -118,25 +118,40 @@ router.get("/codes/judges", async (req: Request, res: Response) => {
 
 router.post("/codes/judges", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const { label } = req.body ?? {};
-  const existing = await db.select().from(participationCodesTable).where(eq(participationCodesTable.role, "judge"));
-  let maxNum = 0;
-  for (const c of existing) {
-    const match = c.code.match(/@(\d+)$/);
-    if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+
+  const rawLabel = req.body?.label ? String(req.body.label).trim().slice(0, 80) : null;
+
+  // Generate a random judge code (non-sequential)
+  const existing = new Set(
+    (await db.select({ code: participationCodesTable.code }).from(participationCodesTable)
+      .where(eq(participationCodesTable.role, "judge"))).map((c) => c.code)
+  );
+
+  let code = generateJudgeCode();
+  let attempts = 0;
+  while (existing.has(code) && attempts < 20) {
+    code = generateJudgeCode();
+    attempts++;
   }
-  const nextNum = maxNum + 1;
-  const code = generateJudgeCode(nextNum);
+
+  const judgeCount = existing.size + 1;
+  const label = rawLabel || `Judge ${judgeCount}`;
+
   const [inserted] = await db.insert(participationCodesTable).values({
-    code, role: "judge", label: label || `Judge ${nextNum}`, isReusable: true, isUsed: false,
+    code, role: "judge", label, isReusable: true, isUsed: false,
   }).returning();
-  await logAction("create_judge_code", `Created judge code: ${code}`);
+
+  await logAction("create_judge_code", `Created judge code for: ${label}`);
   res.status(201).json({ id: inserted.id, code: inserted.code, label: inserted.label ?? null, createdAt: inserted.createdAt.toISOString() });
 });
 
 router.delete("/codes/judges/:id", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
   const [deleted] = await db
     .delete(participationCodesTable)
     .where(and(eq(participationCodesTable.id, id), eq(participationCodesTable.role, "judge")))
@@ -145,7 +160,7 @@ router.delete("/codes/judges/:id", async (req: Request, res: Response) => {
     res.status(404).json({ error: "not_found", message: "Judge code not found" });
     return;
   }
-  await logAction("delete_judge_code", `Deleted judge code: ${deleted.code}`);
+  await logAction("delete_judge_code", `Deleted judge code for: ${deleted.label ?? deleted.code}`);
   res.json({ success: true });
 });
 
