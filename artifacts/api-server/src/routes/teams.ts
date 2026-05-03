@@ -36,6 +36,36 @@ router.get("/teams", async (_req: Request, res: Response) => {
   res.json(teams.map(formatTeam));
 });
 
+router.get("/teams/with-dummy-auth", async (req: Request, res: Response) => {
+  const token = extractToken(req.headers.authorization);
+  const session = await getSessionFromToken(token);
+  if (!session) {
+    res.status(401).json({ error: "unauthorized", message: "Team access required" });
+    return;
+  }
+
+  const teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
+  const [activePoll] = await db.select().from(pollsTable).where(eq(pollsTable.isActive, true));
+  const votes = activePoll ? await db.select().from(votesTable).where(eq(votesTable.pollId, activePoll.id)) : [];
+  const totalVotes = votes.length;
+  const voteCounts = new Map<number, number>();
+  for (const vote of votes) voteCounts.set(vote.teamId, (voteCounts.get(vote.teamId) ?? 0) + 1);
+
+  res.json({
+    auth: {
+      token: session.token,
+      role: session.isAdmin ? "admin" : session.isJudge ? "judge" : "participant",
+      codeId: session.codeId,
+      note: "Dummy team auth: uses existing code-based session and projects team access state",
+    },
+    teams: teams.map((team) => ({
+      ...formatTeam(team),
+      voteCount: voteCounts.get(team.id) ?? 0,
+      percentage: totalVotes > 0 ? Math.round(((voteCounts.get(team.id) ?? 0) / totalVotes) * 1000) / 10 : 0,
+    })),
+  });
+});
+
 router.post("/teams", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
@@ -98,21 +128,15 @@ router.get("/teams/leaderboard", async (_req: Request, res: Response) => {
   const teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
 
   const [activePoll] = await db.select().from(pollsTable).where(eq(pollsTable.isActive, true));
-
   if (!activePoll && !teams.length) {
     res.json([]);
     return;
   }
 
-  const votes = activePoll
-    ? await db.select().from(votesTable).where(eq(votesTable.pollId, activePoll.id))
-    : [];
-
+  const votes = activePoll ? await db.select().from(votesTable).where(eq(votesTable.pollId, activePoll.id)) : [];
   const totalVotes = votes.length;
   const voteCounts = new Map<number, number>();
-  for (const vote of votes) {
-    voteCounts.set(vote.teamId, (voteCounts.get(vote.teamId) ?? 0) + 1);
-  }
+  for (const vote of votes) voteCounts.set(vote.teamId, (voteCounts.get(vote.teamId) ?? 0) + 1);
 
   const leaderboard = teams.map(team => ({
     teamId: team.id,

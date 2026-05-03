@@ -8,7 +8,15 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
-import { Terminal, Users, Trophy, Target, ArrowRight, Activity } from "lucide-react";
+import { Terminal, Users, Trophy, Target, ArrowRight, Activity, CheckCircle2 } from "lucide-react";
+
+const PENDING_ITEMS = [
+  "Team registration auth flow",
+  "Participant code issuance during registration",
+  "Team dashboard binding to logged-in participant",
+  "Public registration status screen",
+  "Submission lock/unlock state",
+];
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -65,10 +73,7 @@ export default function Home() {
     }
   };
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-  };
+  const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
   const itemVariants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 
   return (
@@ -82,8 +87,6 @@ export default function Home() {
 
       <div className="container mx-auto px-4 py-12 md:py-24 z-10 flex-1 flex flex-col justify-center">
         <motion.div className="grid lg:grid-cols-2 gap-12 items-center" variants={containerVariants} initial="hidden" animate="show">
-
-          {/* Hero Content */}
           <motion.div className="flex flex-col gap-6" variants={itemVariants}>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium w-fit">
               <Activity className="w-4 h-4" />
@@ -111,7 +114,6 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* Unified Login */}
           <motion.div className="w-full max-w-md mx-auto lg:ml-auto" variants={itemVariants}>
             <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-2xl shadow-primary/5">
               <CardHeader className="text-center pb-4">
@@ -131,42 +133,35 @@ export default function Home() {
                     />
                     <Terminal className="absolute left-4 top-4 w-6 h-6 text-muted-foreground" />
                   </div>
-                  <Button
-                    type="submit"
-                    className="w-full h-12 font-bold tracking-wide"
-                    size="lg"
-                    disabled={loading || !code.trim()}
-                  >
-                    {loading ? (
-                      <span className="flex items-center gap-2">CONNECTING <span className="animate-pulse">...</span></span>
-                    ) : (
-                      <span className="flex items-center gap-2">AUTHENTICATE <ArrowRight className="w-4 h-4" /></span>
-                    )}
+                  <Button type="submit" className="w-full h-12 font-bold tracking-wide" size="lg" disabled={loading || !code.trim()}>
+                    {loading ? <span className="flex items-center gap-2">CONNECTING <span className="animate-pulse">...</span></span> : <span className="flex items-center gap-2">AUTHENTICATE <ArrowRight className="w-4 h-4" /></span>}
                   </Button>
                 </form>
-
-                {/* Role hint */}
                 <div className="mt-6 space-y-2">
                   <p className="text-xs text-muted-foreground text-center font-mono uppercase tracking-wider mb-3">Code Format Guide</p>
                   <div className="grid grid-cols-1 gap-1.5 text-xs font-mono">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
-                      <span className="text-muted-foreground w-20">Participant</span>
-                      <span className="text-primary/80">HACKFORGE_PART_XXXXXXXX</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
-                      <span className="text-muted-foreground w-20">Judge</span>
-                      <span className="text-chart-2/80">HACKFORGE_JUDGE@01</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
-                      <span className="text-muted-foreground w-20">Admin</span>
-                      <span className="text-chart-4/80">HACKFORGE_ADMIN@01</span>
-                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Participant</span><span className="text-primary/80">HACKFORGE_PART_XXXXXXXX</span></div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Judge</span><span className="text-chart-2/80">HACKFORGE_JUDGE@01</span></div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Admin</span><span className="text-chart-4/80">HACKFORGE_ADMIN@01</span></div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Phase tracker */}
+            <Card className="mt-6 border-dashed border-primary/20 bg-card/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-mono flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Pending Work</CardTitle>
+                <CardDescription>Things still left to finish</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {PENDING_ITEMS.map((item) => (
+                  <div key={item} className="text-sm flex items-center gap-2 text-muted-foreground">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/70" /> {item}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
             <div className="mt-8">
               <h3 className="text-sm font-semibold text-muted-foreground mb-4 uppercase tracking-wider text-center">Protocol Sequence</h3>
               <div className="flex items-center justify-between px-2">
