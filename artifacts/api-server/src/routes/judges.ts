@@ -1,8 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, judgesTable, judgeScoresTable, teamsTable, submissionsTable, sessionsTable, eventConfigTable, adminLogsTable } from "@workspace/db";
+import { db, judgeScoresTable, teamsTable, submissionsTable, sessionsTable, eventConfigTable, participationCodesTable, adminLogsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import crypto from "crypto";
-import { extractToken, getSessionFromToken, generateToken } from "../lib/auth";
+import { extractToken, getSessionFromToken } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -30,44 +29,18 @@ async function requireAdminOrJudge(req: Request, res: Response): Promise<typeof 
   return session;
 }
 
-// Judge login
-router.post("/judges/login", async (req: Request, res: Response) => {
-  const { email, password } = req.body ?? {};
-  if (!email || !password) {
-    res.status(400).json({ error: "validation_error", message: "Email and password required" });
-    return;
-  }
-
-  const [judge] = await db.select().from(judgesTable).where(eq(judgesTable.email, email));
-  if (!judge) {
-    res.status(401).json({ error: "invalid_credentials", message: "Invalid email or password" });
-    return;
-  }
-
-  const passwordHash = crypto.createHash("sha256").update(password).digest("hex");
-  if (judge.passwordHash !== passwordHash) {
-    res.status(401).json({ error: "invalid_credentials", message: "Invalid email or password" });
-    return;
-  }
-
-  const token = generateToken();
-  await db.insert(sessionsTable).values({ token, codeId: 0, isJudge: true, judgeId: judge.id });
-
-  res.json({ token, id: judge.id, name: judge.name, email: judge.email, isJudge: true });
-});
-
-// Get judge profile
+// Get judge profile from session
 router.get("/judges/me", async (req: Request, res: Response) => {
   const session = await requireJudge(req, res);
   if (!session) return;
 
-  const [judge] = await db.select().from(judgesTable).where(eq(judgesTable.id, session.judgeId!));
-  if (!judge) {
-    res.status(404).json({ error: "not_found", message: "Judge not found" });
+  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
+  if (!code) {
+    res.status(404).json({ error: "not_found", message: "Judge code not found" });
     return;
   }
 
-  res.json({ id: judge.id, name: judge.name, email: judge.email, isJudge: true });
+  res.json({ id: session.codeId, code: code.code, label: code.label ?? code.code, isJudge: true });
 });
 
 // Get all teams with submissions and this judge's scores
@@ -75,18 +48,16 @@ router.get("/judges/teams", async (req: Request, res: Response) => {
   const session = await requireAdminOrJudge(req, res);
   if (!session) return;
 
-  const judgeId = session.isJudge ? session.judgeId! : null;
+  const judgeCodeId = session.codeId;
 
   const teams = await db.select().from(teamsTable).orderBy(teamsTable.name);
   const submissions = await db.select().from(submissionsTable);
-  const scores = judgeId !== null
-    ? await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, judgeId))
-    : [];
+  const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, judgeCodeId));
 
-  const submissionMap = new Map(submissions.map(s => [s.teamId, s]));
-  const scoreMap = new Map(scores.map(s => [s.teamId, s]));
+  const submissionMap = new Map(submissions.map((s) => [s.teamId, s]));
+  const scoreMap = new Map(scores.map((s) => [s.teamId, s]));
 
-  const result = teams.map(team => {
+  const result = teams.map((team) => {
     const sub = submissionMap.get(team.id);
     const score = scoreMap.get(team.id);
     return {
@@ -99,13 +70,9 @@ router.get("/judges/teams", async (req: Request, res: Response) => {
       slidesUrl: sub?.slidesUrl ?? null,
       submissionDescription: sub?.description ?? null,
       hasSubmission: !!sub,
-      judgeScore: score ? {
-        score: score.score,
-        innovation: score.innovation ?? null,
-        execution: score.execution ?? null,
-        presentation: score.presentation ?? null,
-        feedback: score.feedback ?? null,
-      } : null,
+      judgeScore: score
+        ? { score: score.score, innovation: score.innovation ?? null, execution: score.execution ?? null, presentation: score.presentation ?? null, feedback: score.feedback ?? null }
+        : null,
     };
   });
 
@@ -129,10 +96,10 @@ router.post("/judges/scores", async (req: Request, res: Response) => {
     return;
   }
 
+  const judgeId = session.codeId; // codeId acts as judge identifier
   const [existing] = await db.select().from(judgeScoresTable)
-    .where(and(eq(judgeScoresTable.judgeId, session.judgeId!), eq(judgeScoresTable.teamId, teamId)));
+    .where(and(eq(judgeScoresTable.judgeId, judgeId), eq(judgeScoresTable.teamId, teamId)));
 
-  let saved: typeof judgeScoresTable.$inferSelect;
   const values = {
     score,
     innovation: typeof innovation === "number" ? innovation : null,
@@ -142,34 +109,29 @@ router.post("/judges/scores", async (req: Request, res: Response) => {
     updatedAt: new Date(),
   };
 
+  let saved: typeof judgeScoresTable.$inferSelect;
   if (existing) {
     [saved] = await db.update(judgeScoresTable).set(values).where(eq(judgeScoresTable.id, existing.id)).returning();
   } else {
-    [saved] = await db.insert(judgeScoresTable).values({ judgeId: session.judgeId!, teamId, ...values, createdAt: new Date() }).returning();
+    [saved] = await db.insert(judgeScoresTable).values({ judgeId, teamId, ...values, createdAt: new Date() }).returning();
   }
 
-  await logAction("judge_scored", `Judge ${session.judgeId} scored team ${team.name}: ${score}/10`);
+  await logAction("judge_scored", `Judge (code ${session.codeId}) scored team ${team.name}: ${score}/10`);
   res.json({ id: saved.id, judgeId: saved.judgeId, teamId: saved.teamId, score: saved.score, innovation: saved.innovation, execution: saved.execution, presentation: saved.presentation, feedback: saved.feedback });
 });
 
-// Get all scores (for this judge)
+// Get all scores for this judge
 router.get("/judges/scores", async (req: Request, res: Response) => {
   const session = await requireJudge(req, res);
   if (!session) return;
-
-  const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, session.judgeId!));
-  res.json(scores.map(s => ({
-    id: s.id,
-    teamId: s.teamId,
-    score: s.score,
-    innovation: s.innovation,
-    execution: s.execution,
-    presentation: s.presentation,
-    feedback: s.feedback,
+  const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, session.codeId));
+  res.json(scores.map((s) => ({
+    id: s.id, teamId: s.teamId, score: s.score,
+    innovation: s.innovation, execution: s.execution, presentation: s.presentation, feedback: s.feedback,
   })));
 });
 
-// Get aggregate judge leaderboard (admin + judges, optionally public)
+// Aggregate judge leaderboard
 router.get("/judges/leaderboard", async (req: Request, res: Response) => {
   const token = extractToken(req.headers.authorization);
   const session = await getSessionFromToken(token);
@@ -184,17 +146,15 @@ router.get("/judges/leaderboard", async (req: Request, res: Response) => {
 
   const teams = await db.select().from(teamsTable);
   const allScores = await db.select().from(judgeScoresTable);
-  const judges = await db.select().from(judgesTable);
+  const judgeCodes = await db.select().from(participationCodesTable).where(eq(participationCodesTable.role, "judge"));
 
   const teamScores = new Map<number, number[]>();
-  for (const score of allScores) {
-    if (!teamScores.has(score.teamId)) teamScores.set(score.teamId, []);
-    teamScores.get(score.teamId)!.push(score.score);
+  for (const s of allScores) {
+    if (!teamScores.has(s.teamId)) teamScores.set(s.teamId, []);
+    teamScores.get(s.teamId)!.push(s.score);
   }
 
-  const judgeCount = judges.length;
-
-  const leaderboard = teams.map(team => {
+  const leaderboard = teams.map((team) => {
     const scores = teamScores.get(team.id) ?? [];
     const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
     return {
@@ -203,16 +163,15 @@ router.get("/judges/leaderboard", async (req: Request, res: Response) => {
       projectTitle: team.projectTitle,
       averageScore: avgScore !== null ? Math.round(avgScore * 10) / 10 : null,
       judgesScored: scores.length,
-      totalJudges: judgeCount,
+      totalJudges: judgeCodes.length,
     };
   }).sort((a, b) => {
-    if (a.averageScore === null && b.averageScore === null) return 0;
     if (a.averageScore === null) return 1;
     if (b.averageScore === null) return -1;
     return b.averageScore - a.averageScore;
   }).map((t, i) => ({ ...t, rank: i + 1 }));
 
-  res.json({ isVisible: isPublic, judgeCount, leaderboard });
+  res.json({ isVisible: isPublic, judgeCount: judgeCodes.length, leaderboard });
 });
 
 export default router;

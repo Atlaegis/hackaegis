@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import {
-  useAdminLogin,
   useGetAdminDashboard,
   useListCodes,
   useGenerateCodes,
@@ -22,6 +21,7 @@ import {
 import type { UpdateEventStatusBodyPhase } from "@workspace/api-client-react";
 import { UpdateEventStatusBodyPhase as PhaseValues } from "@workspace/api-client-react";
 import { useAuthTokens } from "@/lib/auth";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -30,74 +30,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   LayoutDashboard, Users, Code2, BarChart2, Settings, ScrollText,
-  RefreshCw, Trash2, Play, Square, Plus, LogIn, Terminal,
-  Activity, CheckCircle, Scale, Trophy, ExternalLink, Github, Monitor, FileText,
+  RefreshCw, Trash2, Play, Square, Plus, Terminal, Trophy,
+  Activity, CheckCircle, Scale, Github, Monitor, FileText, Copy, LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
-
-// ─── Admin Login Form ──────────────────────────────────────────────────────────
-function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const adminLogin = useAdminLogin();
-  const { toast } = useToast();
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    adminLogin.mutate(
-      { data: { email, password } },
-      {
-        onSuccess: (data) => {
-          onLogin(data.token);
-          toast({ title: "Admin Access Granted", description: "Welcome back, commander." });
-        },
-        onError: (err) => {
-          toast({ title: "Authentication Failed", description: err.message, variant: "destructive" });
-        },
-      }
-    );
-  };
-
-  return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm">
-        <Card className="border-primary/20 bg-card/50 backdrop-blur">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="bg-primary/10 p-3 rounded-full">
-                <Terminal className="w-8 h-8 text-primary" />
-              </div>
-            </div>
-            <CardTitle className="font-mono text-xl">ADMIN_LOGIN</CardTitle>
-            <CardDescription>Command-level authentication required</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                type="email"
-                placeholder="admin@hackforge.in"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-background/50 border-border"
-              />
-              <Input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-background/50 border-border"
-              />
-              <Button type="submit" className="w-full" disabled={adminLogin.isPending}>
-                <LogIn className="w-4 h-4 mr-2" />
-                {adminLogin.isPending ? "AUTHENTICATING..." : "AUTHENTICATE"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </motion.div>
-    </div>
-  );
-}
 
 // ─── Dashboard Tab ─────────────────────────────────────────────────────────────
 function DashboardTab() {
@@ -126,18 +62,14 @@ function DashboardTab() {
       <div className="grid grid-cols-2 gap-4">
         <Card>
           <CardHeader><CardTitle className="text-sm font-mono text-muted-foreground">CURRENT PHASE</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold font-mono text-primary">{dashboard?.currentPhase?.toUpperCase() ?? "—"}</p>
-          </CardContent>
+          <CardContent><p className="text-2xl font-bold font-mono text-primary">{dashboard?.currentPhase?.toUpperCase() ?? "—"}</p></CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-sm font-mono text-muted-foreground">ACTIVE POLL</CardTitle></CardHeader>
           <CardContent>
-            {dashboard?.activePollQuestion ? (
-              <p className="font-semibold text-sm">{dashboard.activePollQuestion}</p>
-            ) : (
-              <p className="text-muted-foreground text-sm">No poll active</p>
-            )}
+            {dashboard?.activePollQuestion
+              ? <p className="font-semibold text-sm">{dashboard.activePollQuestion}</p>
+              : <p className="text-muted-foreground text-sm">No poll active</p>}
           </CardContent>
         </Card>
       </div>
@@ -154,41 +86,22 @@ function CodesTab() {
   const [count, setCount] = useState(5);
   const { toast } = useToast();
 
-  const handleGenerate = () => {
-    generateCodes.mutate(
-      { data: { count } },
-      {
-        onSuccess: (data) => {
-          toast({ title: `${(data as { codes?: unknown[] }).codes?.length ?? data.length} codes generated` });
-          refetch();
-        },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
-  };
-
-  const handleReset = (code: string) => {
-    resetCode.mutate({ code }, {
-      onSuccess: () => { toast({ title: "Code reset" }); refetch(); },
-      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-    });
-  };
-
-  const handleDelete = (code: string) => {
-    deleteCode.mutate({ code }, {
-      onSuccess: () => { toast({ title: "Code deleted" }); refetch(); },
-      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-    });
+  const copyAll = () => {
+    const unused = codes?.filter((c) => !c.isUsed).map((c) => c.code).join("\n") ?? "";
+    navigator.clipboard.writeText(unused);
+    toast({ title: "Unused codes copied to clipboard" });
   };
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader><CardTitle className="text-sm font-mono">GENERATE CODES</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm font-mono">GENERATE PARTICIPANT CODES</CardTitle>
+          <CardDescription>Codes will be in <span className="text-primary font-mono">HACKFORGE_PART_XXXXXXXX</span> format</CardDescription>
+        </CardHeader>
         <CardContent>
           <div className="flex gap-3">
             <Input type="number" min={1} max={100} value={count} onChange={(e) => setCount(Number(e.target.value))} className="w-28" />
-            <Button onClick={handleGenerate} disabled={generateCodes.isPending}>
+            <Button onClick={() => generateCodes.mutate({ data: { count } }, { onSuccess: () => { toast({ title: `${count} codes generated` }); refetch(); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) })} disabled={generateCodes.isPending}>
               <Plus className="w-4 h-4 mr-2" /> Generate
             </Button>
           </div>
@@ -197,8 +110,15 @@ function CodesTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-mono">PARTICIPATION CODES</CardTitle>
-          <CardDescription>{codes?.length ?? 0} total</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-mono">PARTICIPATION CODES</CardTitle>
+              <CardDescription>{codes?.length ?? 0} total · {codes?.filter((c) => !c.isUsed).length ?? 0} unused</CardDescription>
+            </div>
+            {(codes?.filter((c) => !c.isUsed).length ?? 0) > 0 && (
+              <Button variant="outline" size="sm" onClick={copyAll}><Copy className="w-3 h-3 mr-1" /> Copy Unused</Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
@@ -206,19 +126,17 @@ function CodesTab() {
               <div key={c.code} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30 hover:bg-muted/50">
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-sm">{c.code}</span>
-                  {c.isUsed ? (
-                    <Badge variant="secondary" className="text-xs bg-chart-3/20 text-chart-3">USED</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-xs text-muted-foreground">AVAILABLE</Badge>
-                  )}
+                  {c.isUsed
+                    ? <Badge variant="secondary" className="text-xs bg-chart-3/20 text-chart-3">USED</Badge>
+                    : <Badge variant="outline" className="text-xs text-muted-foreground">AVAILABLE</Badge>}
                 </div>
                 <div className="flex gap-2">
                   {c.isUsed && (
-                    <Button variant="ghost" size="sm" onClick={() => handleReset(c.code)} title="Reset code">
+                    <Button variant="ghost" size="sm" onClick={() => resetCode.mutate({ code: c.code }, { onSuccess: () => { toast({ title: "Code reset" }); refetch(); } })} title="Reset code">
                       <RefreshCw className="w-3 h-3" />
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(c.code)} title="Delete code" className="text-destructive hover:text-destructive">
+                  <Button variant="ghost" size="sm" onClick={() => deleteCode.mutate({ code: c.code }, { onSuccess: () => { toast({ title: "Code deleted" }); refetch(); } })} className="text-destructive hover:text-destructive">
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
@@ -242,37 +160,6 @@ function TeamsTab() {
   const [editId, setEditId] = useState<number | null>(null);
   const [editData, setEditData] = useState({ name: "", projectTitle: "" });
 
-  const handleCreate = () => {
-    if (!newTeam.name || !newTeam.projectTitle) {
-      toast({ title: "Name and project title are required", variant: "destructive" });
-      return;
-    }
-    createTeam.mutate(
-      { data: { name: newTeam.name, projectTitle: newTeam.projectTitle, description: newTeam.description || null } },
-      {
-        onSuccess: () => { toast({ title: "Team created" }); refetch(); setNewTeam({ name: "", projectTitle: "", description: "" }); },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
-  };
-
-  const handleUpdate = (id: number) => {
-    updateTeam.mutate(
-      { id, data: { name: editData.name, projectTitle: editData.projectTitle } },
-      {
-        onSuccess: () => { toast({ title: "Team updated" }); refetch(); setEditId(null); },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
-  };
-
-  const handleDelete = (id: number) => {
-    deleteTeam.mutate({ id }, {
-      onSuccess: () => { toast({ title: "Team deleted" }); refetch(); },
-      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-    });
-  };
-
   return (
     <div className="space-y-6">
       <Card>
@@ -282,13 +169,19 @@ function TeamsTab() {
             <Input placeholder="Team name *" value={newTeam.name} onChange={(e) => setNewTeam((p) => ({ ...p, name: e.target.value }))} />
             <Input placeholder="Project title *" value={newTeam.projectTitle} onChange={(e) => setNewTeam((p) => ({ ...p, projectTitle: e.target.value }))} />
             <Input placeholder="Description" value={newTeam.description} onChange={(e) => setNewTeam((p) => ({ ...p, description: e.target.value }))} />
-            <Button onClick={handleCreate} disabled={!newTeam.name || !newTeam.projectTitle || createTeam.isPending}>
-              <Plus className="w-4 h-4 mr-2" /> Add Team
-            </Button>
+            <Button
+              onClick={() => {
+                if (!newTeam.name || !newTeam.projectTitle) { toast({ title: "Name and project title required", variant: "destructive" }); return; }
+                createTeam.mutate({ data: { name: newTeam.name, projectTitle: newTeam.projectTitle, description: newTeam.description || null } }, {
+                  onSuccess: () => { toast({ title: "Team created" }); refetch(); setNewTeam({ name: "", projectTitle: "", description: "" }); },
+                  onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+                });
+              }}
+              disabled={!newTeam.name || !newTeam.projectTitle || createTeam.isPending}
+            ><Plus className="w-4 h-4 mr-2" /> Add Team</Button>
           </div>
         </CardContent>
       </Card>
-
       <div className="space-y-3">
         {teams?.map((team) => (
           <Card key={team.id}>
@@ -298,7 +191,7 @@ function TeamsTab() {
                   <Input value={editData.name} onChange={(e) => setEditData((p) => ({ ...p, name: e.target.value }))} placeholder="Team name" />
                   <Input value={editData.projectTitle} onChange={(e) => setEditData((p) => ({ ...p, projectTitle: e.target.value }))} placeholder="Project title" />
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => handleUpdate(team.id)}>Save</Button>
+                    <Button size="sm" onClick={() => updateTeam.mutate({ id: team.id, data: { name: editData.name, projectTitle: editData.projectTitle } }, { onSuccess: () => { toast({ title: "Team updated" }); refetch(); setEditId(null); } })}>Save</Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
                   </div>
                 </div>
@@ -309,12 +202,8 @@ function TeamsTab() {
                     {team.projectTitle && <p className="text-sm text-muted-foreground">{team.projectTitle}</p>}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle ?? "" }); }}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(team.id)} className="text-destructive hover:text-destructive">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle ?? "" }); }}>Edit</Button>
+                    <Button variant="ghost" size="sm" onClick={() => deleteTeam.mutate({ id: team.id }, { onSuccess: () => { toast({ title: "Team deleted" }); refetch(); } })} className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </div>
               )}
@@ -335,17 +224,6 @@ function PollsTab() {
   const { toast } = useToast();
   const [question, setQuestion] = useState("");
 
-  const handleCreate = () => {
-    if (!question) { toast({ title: "A question is required", variant: "destructive" }); return; }
-    createPoll.mutate(
-      { data: { question } },
-      {
-        onSuccess: () => { toast({ title: "Poll created" }); refetch(); setQuestion(""); },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
-  };
-
   return (
     <div className="space-y-6">
       <Card>
@@ -355,12 +233,17 @@ function PollsTab() {
         </CardHeader>
         <CardContent className="space-y-3">
           <Input placeholder="e.g. Which team had the best innovation?" value={question} onChange={(e) => setQuestion(e.target.value)} />
-          <Button size="sm" onClick={handleCreate} disabled={createPoll.isPending}>
+          <Button size="sm" onClick={() => {
+            if (!question) { toast({ title: "A question is required", variant: "destructive" }); return; }
+            createPoll.mutate({ data: { question } }, {
+              onSuccess: () => { toast({ title: "Poll created" }); refetch(); setQuestion(""); },
+              onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+            });
+          }} disabled={createPoll.isPending}>
             <CheckCircle className="w-4 h-4 mr-1" /> Create Poll
           </Button>
         </CardContent>
       </Card>
-
       <div className="space-y-3">
         {polls?.map((poll) => (
           <Card key={poll.id} className={poll.isActive ? "border-primary/40" : ""}>
@@ -394,182 +277,70 @@ function PollsTab() {
   );
 }
 
-// ─── Event Config Tab ──────────────────────────────────────────────────────────
-function EventTab() {
-  const { data: eventStatus } = useGetEventStatus();
-  const updateEvent = useUpdateEventStatus();
-  const { toast } = useToast();
-  const [form, setForm] = useState({
-    eventName: "", tagline: "", streamUrl: "",
-    phase: "" as string,
-    streamActive: false,
-    resultsPublished: false,
-    judgeResultsVisible: false,
-  });
-
-  const handleUpdate = () => {
-    const updateData: {
-      eventName?: string; tagline?: string; streamUrl?: string | null;
-      phase?: UpdateEventStatusBodyPhase; streamActive?: boolean; resultsPublished?: boolean;
-    } & Record<string, unknown> = {
-      streamActive: form.streamActive,
-      resultsPublished: form.resultsPublished,
-      judgeResultsVisible: form.judgeResultsVisible,
-    };
-
-    if (form.eventName) updateData.eventName = form.eventName;
-    if (form.tagline) updateData.tagline = form.tagline;
-    if (form.streamUrl) updateData.streamUrl = form.streamUrl;
-    if (form.phase) updateData.phase = form.phase as UpdateEventStatusBodyPhase;
-
-    updateEvent.mutate({ data: updateData }, {
-      onSuccess: () => toast({ title: "Event updated" }),
-      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-    });
-  };
-
-  const phases = Object.values(PhaseValues);
-  const eventStatusExt = eventStatus as (typeof eventStatus & { judgeResultsVisible?: boolean }) | undefined;
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader><CardTitle className="text-sm font-mono">CURRENT STATUS</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {[
-            { label: "Event Name", value: eventStatus?.eventName ?? "—" },
-            { label: "Phase", value: eventStatus?.phase?.toUpperCase() ?? "—", mono: true },
-            { label: "Stream", value: eventStatus?.streamActive ? "Live" : "Offline" },
-            { label: "Results", value: eventStatus?.resultsPublished ? "Published" : "Hidden" },
-            { label: "Judge Results", value: eventStatusExt?.judgeResultsVisible ? "Visible" : "Hidden" },
-          ].map(({ label, value, mono }) => (
-            <div key={label} className="bg-muted/30 rounded-lg p-3">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className={`font-semibold mt-1 ${mono ? "font-mono text-primary" : ""}`}>{value}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-sm font-mono">UPDATE EVENT</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <Input placeholder={`Event name (current: ${eventStatus?.eventName ?? "—"})`} value={form.eventName} onChange={(e) => setForm((p) => ({ ...p, eventName: e.target.value }))} />
-          <Input placeholder={`Tagline (current: ${eventStatus?.tagline ?? "—"})`} value={form.tagline} onChange={(e) => setForm((p) => ({ ...p, tagline: e.target.value }))} />
-          <Input placeholder="YouTube stream URL" value={form.streamUrl} onChange={(e) => setForm((p) => ({ ...p, streamUrl: e.target.value }))} />
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground font-medium">Phase</p>
-            <div className="flex flex-wrap gap-2">
-              {phases.map((ph) => (
-                <Button key={ph} variant={form.phase === ph ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, phase: ph }))} className="font-mono text-xs">
-                  {ph.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant={form.streamActive ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, streamActive: !p.streamActive }))}>
-              <Activity className="w-4 h-4 mr-2" /> Stream {form.streamActive ? "Live" : "Offline"}
-            </Button>
-            <Button variant={form.resultsPublished ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, resultsPublished: !p.resultsPublished }))}>
-              <CheckCircle className="w-4 h-4 mr-2" /> Results {form.resultsPublished ? "Published" : "Hidden"}
-            </Button>
-            <Button variant={form.judgeResultsVisible ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, judgeResultsVisible: !p.judgeResultsVisible }))}>
-              <Scale className="w-4 h-4 mr-2" /> Judge Scores {form.judgeResultsVisible ? "Visible" : "Hidden"}
-            </Button>
-          </div>
-          <Button onClick={handleUpdate} disabled={updateEvent.isPending} className="w-full">
-            {updateEvent.isPending ? "Updating..." : "Apply Changes"}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ─── Judges Tab ─────────────────────────────────────────────────────────────────
-interface JudgeEntry { id: number; name: string; email: string; scoresSubmitted: number; createdAt: string; }
+// ─── Judge Codes Tab ──────────────────────────────────────────────────────────
+interface JudgeCodeEntry { id: number; code: string; label: string | null; createdAt: string; }
 
 function JudgesTab({ adminToken }: { adminToken: string }) {
-  const [judges, setJudges] = useState<JudgeEntry[]>([]);
+  const [judgeCodes, setJudgeCodes] = useState<JudgeCodeEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [label, setLabel] = useState("");
   const [creating, setCreating] = useState(false);
-  const [resetId, setResetId] = useState<number | null>(null);
-  const [resetPassword, setResetPassword] = useState("");
   const { toast } = useToast();
 
-  const fetchJudges = () => {
+  const fetchCodes = () => {
     setLoading(true);
-    fetch("/api/admin/judges", { headers: { Authorization: `Bearer ${adminToken}` } })
+    fetch("/api/codes/judges", { headers: { Authorization: `Bearer ${adminToken}` } })
       .then((r) => r.json())
-      .then(setJudges)
+      .then(setJudgeCodes)
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchJudges(); }, []);
+  useEffect(() => { fetchCodes(); }, []);
 
   const handleCreate = async () => {
-    if (!form.name || !form.email || !form.password) {
-      toast({ title: "Name, email, and password are required", variant: "destructive" });
-      return;
-    }
     setCreating(true);
     try {
-      const res = await fetch("/api/admin/judges", {
+      const res = await fetch("/api/codes/judges", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ label: label || undefined }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? "Failed to create judge");
-      toast({ title: "Judge created", description: `${form.name} can now log in at /judges` });
-      setForm({ name: "", email: "", password: "" });
-      fetchJudges();
+      if (!res.ok) throw new Error(data.message ?? "Failed");
+      toast({ title: "Judge code created", description: `Code: ${data.code}` });
+      setLabel("");
+      fetchCodes();
     } catch (err: unknown) {
       toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
     }
     setCreating(false);
   };
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Remove judge "${name}"?`)) return;
-    await fetch(`/api/admin/judges/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${adminToken}` } });
-    toast({ title: "Judge removed" });
-    fetchJudges();
+  const handleDelete = async (id: number, code: string) => {
+    if (!confirm(`Remove judge code "${code}"?`)) return;
+    await fetch(`/api/codes/judges/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${adminToken}` } });
+    toast({ title: "Judge code removed" });
+    fetchCodes();
   };
 
-  const handleResetPassword = async (id: number) => {
-    if (!resetPassword) { toast({ title: "Enter a new password", variant: "destructive" }); return; }
-    const res = await fetch(`/api/admin/judges/${id}/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ password: resetPassword }),
-    });
-    if (res.ok) {
-      toast({ title: "Password reset successfully" });
-      setResetId(null);
-      setResetPassword("");
-    } else {
-      toast({ title: "Failed to reset password", variant: "destructive" });
-    }
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast({ title: "Copied!", description: code });
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-mono">ADD JUDGE</CardTitle>
-          <CardDescription>Judges access the scoring portal at <code className="text-primary">/judges</code></CardDescription>
+          <CardTitle className="text-sm font-mono">CREATE JUDGE CODE</CardTitle>
+          <CardDescription>
+            Judge codes are in <span className="font-mono text-chart-2">HACKFORGE_JUDGE@NN</span> format. Give the code to the judge — they enter it on the home page.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Full name *" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-              <Input type="email" placeholder="Email *" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
-              <Input type="password" placeholder="Password *" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} />
-            </div>
+          <div className="flex gap-3">
+            <Input placeholder="Judge name / label (optional)" value={label} onChange={(e) => setLabel(e.target.value)} className="flex-1" />
             <Button onClick={handleCreate} disabled={creating}>
               <Plus className="w-4 h-4 mr-2" /> {creating ? "Creating..." : "Add Judge"}
             </Button>
@@ -579,42 +350,30 @@ function JudgesTab({ adminToken }: { adminToken: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-mono">JUDGES</CardTitle>
-          <CardDescription>{judges.length} judge{judges.length !== 1 ? "s" : ""} registered</CardDescription>
+          <CardTitle className="text-sm font-mono">JUDGE CODES</CardTitle>
+          <CardDescription>{judgeCodes.length} judge{judgeCodes.length !== 1 ? "s" : ""}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="text-center text-muted-foreground py-6 text-sm">Loading...</div>
-          ) : judges.length === 0 ? (
-            <div className="text-center text-muted-foreground py-6 text-sm">No judges yet. Add one above.</div>
+          ) : judgeCodes.length === 0 ? (
+            <div className="text-center text-muted-foreground py-6 text-sm">No judge codes yet. Add one above.</div>
           ) : (
             <div className="space-y-3">
-              {judges.map((judge) => (
-                <div key={judge.id} className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">{judge.name}</p>
-                      <p className="text-sm text-muted-foreground">{judge.email}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="secondary" className="text-xs font-mono">
-                        {judge.scoresSubmitted} scores
-                      </Badge>
-                      <Button variant="ghost" size="sm" onClick={() => { setResetId(resetId === judge.id ? null : judge.id); setResetPassword(""); }}>
-                        <RefreshCw className="w-3 h-3 mr-1" /> Reset PW
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(judge.id, judge.name)}>
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
+              {judgeCodes.map((jc) => (
+                <div key={jc.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50">
+                  <div>
+                    <p className="font-semibold text-sm">{jc.label ?? jc.code}</p>
+                    <p className="font-mono text-xs text-chart-2">{jc.code}</p>
                   </div>
-                  {resetId === judge.id && (
-                    <div className="flex gap-2 pt-1">
-                      <Input type="password" placeholder="New password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} className="h-8 text-sm" />
-                      <Button size="sm" onClick={() => handleResetPassword(judge.id)}>Save</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setResetId(null)}>Cancel</Button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => copyCode(jc.code)} title="Copy code">
+                      <Copy className="w-3 h-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(jc.id, jc.code)}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -658,11 +417,10 @@ function ScoresTab({ adminToken }: { adminToken: string }) {
         <p className="text-sm text-muted-foreground">{data.judgeCount} judge{data.judgeCount !== 1 ? "s" : ""} · Scores 0–10</p>
         <Badge variant="secondary" className="font-mono">{data.teams.filter((t) => t.judgesScored > 0).length} teams scored</Badge>
       </div>
-
       {data.teams.map((team) => (
-        <Card key={team.teamId} className={`${rankColor(team.rank)} transition-all`}>
+        <Card key={team.teamId} className={`${rankColor(team.rank)} transition-all cursor-pointer`} onClick={() => setExpanded(expanded === team.teamId ? null : team.teamId)}>
           <CardContent className="pt-4 pb-4">
-            <div className="flex items-start gap-4 cursor-pointer" onClick={() => setExpanded(expanded === team.teamId ? null : team.teamId)}>
+            <div className="flex items-start gap-4">
               <div className="w-8 text-center font-mono font-bold text-muted-foreground text-sm pt-0.5">#{team.rank}</div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -677,13 +435,10 @@ function ScoresTab({ adminToken }: { adminToken: string }) {
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className={`text-2xl font-bold font-mono ${scoreColor(team.averageScore)}`}>
-                  {team.averageScore !== null ? team.averageScore.toFixed(1) : "—"}
-                </p>
+                <p className={`text-2xl font-bold font-mono ${scoreColor(team.averageScore)}`}>{team.averageScore !== null ? team.averageScore.toFixed(1) : "—"}</p>
                 <p className="text-xs text-muted-foreground">{team.judgesScored}/{team.totalJudges} judges</p>
               </div>
             </div>
-
             {expanded === team.teamId && team.judgeBreakdown.length > 0 && (
               <div className="mt-4 pt-4 border-t border-border space-y-3">
                 {team.judgeBreakdown.map((jb) => (
@@ -711,10 +466,88 @@ function ScoresTab({ adminToken }: { adminToken: string }) {
   );
 }
 
+// ─── Event Config Tab ──────────────────────────────────────────────────────────
+function EventTab() {
+  const { data: eventStatus } = useGetEventStatus();
+  const updateEvent = useUpdateEventStatus();
+  const { toast } = useToast();
+  const [form, setForm] = useState({ eventName: "", tagline: "", streamUrl: "", phase: "" as string, streamActive: false, resultsPublished: false, judgeResultsVisible: false });
+
+  const handleUpdate = () => {
+    const updateData: { eventName?: string; tagline?: string; streamUrl?: string | null; phase?: UpdateEventStatusBodyPhase; streamActive?: boolean; resultsPublished?: boolean; } & Record<string, unknown> = {
+      streamActive: form.streamActive, resultsPublished: form.resultsPublished, judgeResultsVisible: form.judgeResultsVisible,
+    };
+    if (form.eventName) updateData.eventName = form.eventName;
+    if (form.tagline) updateData.tagline = form.tagline;
+    if (form.streamUrl) updateData.streamUrl = form.streamUrl;
+    if (form.phase) updateData.phase = form.phase as UpdateEventStatusBodyPhase;
+    updateEvent.mutate({ data: updateData }, {
+      onSuccess: () => toast({ title: "Event updated" }),
+      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    });
+  };
+
+  const phases = Object.values(PhaseValues);
+  const eventStatusExt = eventStatus as (typeof eventStatus & { judgeResultsVisible?: boolean }) | undefined;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><CardTitle className="text-sm font-mono">CURRENT STATUS</CardTitle></CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {[
+            { label: "Event Name", value: eventStatus?.eventName ?? "—" },
+            { label: "Phase", value: eventStatus?.phase?.toUpperCase() ?? "—", mono: true },
+            { label: "Stream", value: eventStatus?.streamActive ? "Live" : "Offline" },
+            { label: "Results", value: eventStatus?.resultsPublished ? "Published" : "Hidden" },
+            { label: "Judge Results", value: eventStatusExt?.judgeResultsVisible ? "Visible" : "Hidden" },
+          ].map(({ label, value, mono }) => (
+            <div key={label} className="bg-muted/30 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className={`font-semibold mt-1 ${mono ? "font-mono text-primary" : ""}`}>{value}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-sm font-mono">UPDATE EVENT</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <Input placeholder={`Event name (current: ${eventStatus?.eventName ?? "—"})`} value={form.eventName} onChange={(e) => setForm((p) => ({ ...p, eventName: e.target.value }))} />
+          <Input placeholder={`Tagline (current: ${eventStatus?.tagline ?? "—"})`} value={form.tagline} onChange={(e) => setForm((p) => ({ ...p, tagline: e.target.value }))} />
+          <Input placeholder="YouTube stream URL" value={form.streamUrl} onChange={(e) => setForm((p) => ({ ...p, streamUrl: e.target.value }))} />
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground font-medium">Phase</p>
+            <div className="flex flex-wrap gap-2">
+              {phases.map((ph) => (
+                <Button key={ph} variant={form.phase === ph ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, phase: ph }))} className="font-mono text-xs">
+                  {ph.toUpperCase()}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant={form.streamActive ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, streamActive: !p.streamActive }))}>
+              <Activity className="w-4 h-4 mr-2" /> Stream {form.streamActive ? "Live" : "Offline"}
+            </Button>
+            <Button variant={form.resultsPublished ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, resultsPublished: !p.resultsPublished }))}>
+              <CheckCircle className="w-4 h-4 mr-2" /> Results {form.resultsPublished ? "Published" : "Hidden"}
+            </Button>
+            <Button variant={form.judgeResultsVisible ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, judgeResultsVisible: !p.judgeResultsVisible }))}>
+              <Scale className="w-4 h-4 mr-2" /> Judge Scores {form.judgeResultsVisible ? "Visible" : "Hidden"}
+            </Button>
+          </div>
+          <Button onClick={handleUpdate} disabled={updateEvent.isPending} className="w-full">
+            {updateEvent.isPending ? "Updating..." : "Apply Changes"}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Logs Tab ──────────────────────────────────────────────────────────────────
 function LogsTab() {
   const { data: logs } = useGetAdminLogs();
-
   return (
     <div className="space-y-4">
       <Card>
@@ -727,12 +560,10 @@ function LogsTab() {
                 <div className="flex-1">
                   <span className="font-mono text-xs text-muted-foreground mr-3">{new Date(log.createdAt).toLocaleString()}</span>
                   <span className="font-medium">{log.action}</span>
-                  {log.details && <span className="text-muted-foreground ml-2">— {log.details}</span>}
+                  {log.details && <span className="text-muted-foreground ml-2 text-xs">— {log.details}</span>}
                 </div>
               </div>
-            )) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No logs yet.</p>
-            )}
+            )) : <p className="text-muted-foreground text-sm py-4 text-center">No logs yet.</p>}
           </div>
         </CardContent>
       </Card>
@@ -740,66 +571,101 @@ function LogsTab() {
   );
 }
 
-// ─── Main Admin Component ──────────────────────────────────────────────────────
+// ─── Main Admin Panel ─────────────────────────────────────────────────────────
 export default function Admin() {
-  const { getAdminToken, setAdminToken } = useAuthTokens();
-
-  const handleLogin = (token: string) => {
-    setAdminToken(token);
-    setAuthTokenGetter(() => localStorage.getItem("hackforge_admin_token"));
-    window.location.reload();
-  };
-
+  const [, setLocation] = useLocation();
+  const { getAdminToken, adminLogout } = useAuthTokens();
   const adminToken = getAdminToken();
 
+  useEffect(() => {
+    if (adminToken) {
+      setAuthTokenGetter(() => localStorage.getItem("hackforge_admin_token"));
+    }
+  }, [adminToken]);
+
+  // Not authenticated → redirect home
   if (!adminToken) {
-    return <AdminLogin onLogin={handleLogin} />;
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm text-center space-y-6">
+          <div className="flex justify-center">
+            <div className="bg-primary/10 p-4 rounded-full border border-primary/20">
+              <Terminal className="w-10 h-10 text-primary" />
+            </div>
+          </div>
+          <div>
+            <h2 className="font-mono text-2xl font-bold">ADMIN ACCESS</h2>
+            <p className="text-muted-foreground mt-2 text-sm">Enter your admin code on the home page to access this panel.</p>
+          </div>
+          <div className="bg-muted/40 rounded-lg p-3 font-mono text-sm text-chart-4">
+            HACKFORGE_ADMIN@01
+          </div>
+          <Button className="w-full" onClick={() => setLocation("/")}>
+            Go to Home Page
+          </Button>
+        </motion.div>
+      </div>
+    );
   }
 
+  const handleLogout = () => {
+    adminLogout();
+    setAuthTokenGetter(() => null);
+    setLocation("/");
+  };
+
+  const tabs = [
+    { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { value: "codes", label: "Codes", icon: Code2 },
+    { value: "teams", label: "Teams", icon: Users },
+    { value: "polls", label: "Polls", icon: BarChart2 },
+    { value: "judges", label: "Judges", icon: Scale },
+    { value: "scores", label: "Scores", icon: Trophy },
+    { value: "event", label: "Config", icon: Settings },
+    { value: "logs", label: "Logs", icon: ScrollText },
+  ] as const;
+
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-background py-8">
+    <div className="min-h-[calc(100vh-4rem)] bg-background py-6">
       <div className="container mx-auto px-4 max-w-5xl space-y-6">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-          <LayoutDashboard className="w-6 h-6 text-primary" />
-          <h1 className="text-2xl font-bold font-mono">COMMAND CENTRE</h1>
+
+        {/* Header */}
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
+              <Terminal className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="font-bold font-mono text-xl">ADMIN PANEL</h1>
+              <p className="text-sm text-muted-foreground">HackForge Command Centre</p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleLogout} className="text-muted-foreground gap-2">
+            <LogOut className="w-4 h-4" /> Logout
+          </Button>
         </motion.div>
 
+        {/* Tabs */}
         <Tabs defaultValue="dashboard">
-          <TabsList className="grid grid-cols-4 md:grid-cols-8 mb-6">
-            <TabsTrigger value="dashboard" className="gap-1 text-xs">
-              <BarChart2 className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Stats</span>
-            </TabsTrigger>
-            <TabsTrigger value="codes" className="gap-1 text-xs">
-              <Code2 className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Codes</span>
-            </TabsTrigger>
-            <TabsTrigger value="teams" className="gap-1 text-xs">
-              <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Teams</span>
-            </TabsTrigger>
-            <TabsTrigger value="polls" className="gap-1 text-xs">
-              <Activity className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Polls</span>
-            </TabsTrigger>
-            <TabsTrigger value="judges" className="gap-1 text-xs">
-              <Scale className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Judges</span>
-            </TabsTrigger>
-            <TabsTrigger value="scores" className="gap-1 text-xs">
-              <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Scores</span>
-            </TabsTrigger>
-            <TabsTrigger value="event" className="gap-1 text-xs">
-              <Settings className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Event</span>
-            </TabsTrigger>
-            <TabsTrigger value="logs" className="gap-1 text-xs">
-              <ScrollText className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Logs</span>
-            </TabsTrigger>
+          <TabsList className="grid grid-cols-4 md:grid-cols-8 h-auto gap-1 p-1">
+            {tabs.map(({ value, label, icon: Icon }) => (
+              <TabsTrigger key={value} value={value} className="flex-col gap-0.5 h-auto py-2 text-xs">
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          <TabsContent value="dashboard"><DashboardTab /></TabsContent>
-          <TabsContent value="codes"><CodesTab /></TabsContent>
-          <TabsContent value="teams"><TeamsTab /></TabsContent>
-          <TabsContent value="polls"><PollsTab /></TabsContent>
-          <TabsContent value="judges"><JudgesTab adminToken={adminToken} /></TabsContent>
-          <TabsContent value="scores"><ScoresTab adminToken={adminToken} /></TabsContent>
-          <TabsContent value="event"><EventTab /></TabsContent>
-          <TabsContent value="logs"><LogsTab /></TabsContent>
+          <div className="mt-6">
+            <TabsContent value="dashboard"><DashboardTab /></TabsContent>
+            <TabsContent value="codes"><CodesTab /></TabsContent>
+            <TabsContent value="teams"><TeamsTab /></TabsContent>
+            <TabsContent value="polls"><PollsTab /></TabsContent>
+            <TabsContent value="judges"><JudgesTab adminToken={adminToken} /></TabsContent>
+            <TabsContent value="scores"><ScoresTab adminToken={adminToken} /></TabsContent>
+            <TabsContent value="event"><EventTab /></TabsContent>
+            <TabsContent value="logs"><LogsTab /></TabsContent>
+          </div>
         </Tabs>
       </div>
     </div>
