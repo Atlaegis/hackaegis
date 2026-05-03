@@ -9,6 +9,7 @@ import Watch from "@/pages/Watch";
 import Results from "@/pages/Results";
 import Admin from "@/pages/Admin";
 import Judges from "@/pages/Judges";
+import Register from "@/pages/Register";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,7 @@ function Router() {
       <main className="flex-1">
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/register" component={Register} />
           <Route path="/watch" component={Watch} />
           <Route path="/results" component={Results} />
           <Route path="/results/:slug" component={Results} />

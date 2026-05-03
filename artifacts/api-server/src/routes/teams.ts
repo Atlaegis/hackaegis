@@ -33,6 +33,7 @@ function formatTeam(team: typeof teamsTable.$inferSelect, members?: Array<{ id: 
     projectTitle: team.projectTitle,
     description: team.description ?? null,
     githubUrl: team.githubUrl ?? null,
+    isFinalist: (team as typeof team & { isFinalist?: boolean }).isFinalist ?? false,
     createdAt: team.createdAt.toISOString(),
     members: members ?? [],
   };
@@ -182,6 +183,19 @@ router.post("/teams/unassign-code", async (req: Request, res: Response) => {
 
   await logAction("unassign_code", `Unassigned code ${updated.code} from team`);
   res.json({ success: true });
+});
+
+// Admin: toggle finalist status for a team
+router.post("/teams/:id/finalist", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
+  const { isFinalist } = req.body ?? {};
+  const updateData = { isFinalist: !!isFinalist } as Partial<typeof teamsTable.$inferInsert> & { isFinalist?: boolean };
+  const [updated] = await db.update(teamsTable).set(updateData).where(eq(teamsTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "not_found" }); return; }
+  await logAction("toggle_finalist", `Team ${updated.name} finalist = ${isFinalist}`);
+  res.json(formatTeam(updated, []));
 });
 
 // Leaderboard

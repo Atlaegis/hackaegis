@@ -192,6 +192,7 @@ router.get("/auth/my-team", async (req: Request, res: Response) => {
       description: team.description ?? null,
       githubUrl: team.githubUrl ?? null,
       hackathonId: team.hackathonId ?? null,
+      isFinalist: (team as typeof team & { isFinalist?: boolean }).isFinalist ?? false,
     },
   });
 });

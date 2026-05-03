@@ -14,12 +14,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Tv, CheckCircle, Clock, Activity, Users, Send, Github, Monitor, FileText, Lock, AlertCircle } from "lucide-react";
+import {
+  Tv, CheckCircle, Clock, Activity, Users, Send, Github, Monitor,
+  FileText, Lock, AlertCircle, Video, Eye, Star, Mic, MicOff
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Team {
   id: number; name: string; projectTitle: string;
-  description: string | null; githubUrl: string | null; hackathonId: number | null;
+  description: string | null; githubUrl: string | null;
+  hackathonId: number | null; isFinalist: boolean;
+}
+
+interface ActiveHackathon {
+  id: number; jitsiRoom: string | null; meetMode: string;
+  jitsiPassword: string | null; streamUrl: string | null;
+  streamActive: boolean; phase: string;
 }
 
 interface Submission {
@@ -43,9 +53,7 @@ function SubmissionForm({ team, token }: { team: Team; token: string }) {
   });
 
   useEffect(() => {
-    fetch(`/api/submissions/${team.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`/api/submissions/${team.id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => {
         setSubmission(data);
@@ -85,9 +93,7 @@ function SubmissionForm({ team, token }: { team: Team; token: string }) {
       toast({ title: "Submission saved!", description: "Your project details have been updated." });
     } catch (err: unknown) {
       toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to save", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   if (loading) return (
@@ -124,16 +130,16 @@ function SubmissionForm({ team, token }: { team: Team; token: string }) {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1"><Github className="w-3 h-3" /> GitHub URL</label>
+              <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Github className="w-3 h-3" /> GitHub URL</label>
               <Input value={form.githubUrl} onChange={(e) => setForm((p) => ({ ...p, githubUrl: e.target.value }))} placeholder="https://github.com/..." disabled={isLocked} className="bg-background/50" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1"><Monitor className="w-3 h-3" /> Demo URL</label>
+              <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Monitor className="w-3 h-3" /> Demo / Deployment URL</label>
               <Input value={form.demoUrl} onChange={(e) => setForm((p) => ({ ...p, demoUrl: e.target.value }))} placeholder="https://..." disabled={isLocked} className="bg-background/50" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1"><FileText className="w-3 h-3" /> Slides URL</label>
-              <Input value={form.slidesUrl} onChange={(e) => setForm((p) => ({ ...p, slidesUrl: e.target.value }))} placeholder="https://..." disabled={isLocked} className="bg-background/50" />
+              <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><FileText className="w-3 h-3" /> PPT / Slides URL</label>
+              <Input value={form.slidesUrl} onChange={(e) => setForm((p) => ({ ...p, slidesUrl: e.target.value }))} placeholder="https://slides.google.com/..." disabled={isLocked} className="bg-background/50" />
             </div>
           </div>
         </div>
@@ -152,6 +158,29 @@ function SubmissionForm({ team, token }: { team: Team; token: string }) {
   );
 }
 
+// ─── Jitsi Meet Embed ─────────────────────────────────────────────────────────
+function JitsiMeet({ roomName, displayName, isHost }: { roomName: string; displayName: string; isHost?: boolean }) {
+  const encoded = encodeURIComponent(displayName);
+  const config = [
+    `userInfo.displayName=${encoded}`,
+    "config.prejoinPageEnabled=false",
+    isHost ? "config.startWithVideoMuted=false" : "config.startWithVideoMuted=false",
+    isHost ? "config.startWithAudioMuted=false" : "config.startWithAudioMuted=false",
+  ].join("&");
+  const src = `https://meet.jit.si/${roomName}#${config}`;
+  return (
+    <div className="relative w-full rounded-lg overflow-hidden" style={{ paddingBottom: "56.25%" }}>
+      <iframe
+        className="absolute inset-0 w-full h-full"
+        src={src}
+        allow="camera; microphone; display-capture; fullscreen; autoplay"
+        allowFullScreen
+        title="HackForge Live Meet"
+      />
+    </div>
+  );
+}
+
 export default function Watch() {
   const [, setLocation] = useLocation();
   const { getToken } = useAuthTokens();
@@ -165,18 +194,22 @@ export default function Watch() {
 
   const [myTeam, setMyTeam] = useState<Team | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
+  const [activeHackathon, setActiveHackathon] = useState<ActiveHackathon | null>(null);
+  const [joinedMeet, setJoinedMeet] = useState(false);
 
   useEffect(() => {
     if (!token) { setLocation("/"); return; }
-    // Fetch team info
     setTeamLoading(true);
-    fetch("/api/auth/my-team", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch("/api/auth/my-team", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => { if (data.team) setMyTeam(data.team); })
       .catch(() => {})
       .finally(() => setTeamLoading(false));
+
+    fetch("/api/hackathons/active")
+      .then((r) => r.json())
+      .then((d) => { if (d.id) setActiveHackathon(d); })
+      .catch(() => {});
   }, [token]);
 
   useEffect(() => {
@@ -206,6 +239,11 @@ export default function Watch() {
   const isVotingOpen = activePoll?.isActive && !activePoll?.isFrozen;
   const totalVotes = activePoll?.results?.reduce((s, r: PollResult) => s + r.voteCount, 0) ?? 0;
 
+  const isFinale = activeHackathon?.phase === "finale" || eventStatus?.phase === "finale";
+  const hasJitsi = !!(activeHackathon?.jitsiRoom) && (activeHackathon?.meetMode === "jitsi" || activeHackathon?.meetMode === "both");
+  const hasYoutube = !!(activeHackathon?.streamUrl ?? eventStatus?.streamUrl) && (activeHackathon?.meetMode === "youtube" || activeHackathon?.meetMode === "both" || !activeHackathon);
+  const isFinalist = myTeam?.isFinalist === true;
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background py-8">
       <div className="container mx-auto px-4 max-w-6xl space-y-6">
@@ -215,6 +253,7 @@ export default function Watch() {
           <div className="flex items-center gap-3">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span className="font-mono text-sm text-muted-foreground">LIVE FEED</span>
+            {isFinale && <Badge className="bg-yellow-400/10 text-yellow-400 border-yellow-400/30 text-xs font-mono">FINALE</Badge>}
           </div>
           {eventStatus?.phase && (
             <span className="text-xs font-mono px-3 py-1 rounded-full border bg-primary/10 text-primary border-primary/30">
@@ -226,34 +265,111 @@ export default function Watch() {
         {/* Team banner */}
         {!teamLoading && myTeam && (
           <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-            <Card className="border-chart-2/30 bg-chart-2/5">
+            <Card className={`border-chart-2/30 ${isFinalist ? "bg-yellow-400/5 border-yellow-400/30" : "bg-chart-2/5"}`}>
               <CardContent className="py-3 px-4 flex items-center gap-3">
-                <div className="bg-chart-2/20 p-1.5 rounded-md"><Users className="w-4 h-4 text-chart-2" /></div>
+                <div className={`p-1.5 rounded-md ${isFinalist ? "bg-yellow-400/20" : "bg-chart-2/20"}`}>
+                  <Users className={`w-4 h-4 ${isFinalist ? "text-yellow-400" : "text-chart-2"}`} />
+                </div>
                 <div>
                   <p className="font-semibold text-sm">{myTeam.name}</p>
                   <p className="text-xs text-muted-foreground">{myTeam.projectTitle}</p>
                 </div>
-                <Badge className="ml-auto bg-chart-2/10 text-chart-2 border-chart-2/20 text-xs">YOUR TEAM</Badge>
+                <div className="ml-auto flex gap-2">
+                  {isFinalist && <Badge className="bg-yellow-400/10 text-yellow-400 border-yellow-400/30 text-xs"><Star className="w-3 h-3 mr-1" /> FINALIST</Badge>}
+                  <Badge className={`text-xs ${isFinalist ? "bg-yellow-400/10 text-yellow-400 border-yellow-400/20" : "bg-chart-2/10 text-chart-2 border-chart-2/20"}`}>YOUR TEAM</Badge>
+                </div>
               </CardContent>
             </Card>
           </motion.div>
         )}
 
-        {/* YouTube Embed */}
-        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-          <Card className="overflow-hidden border-primary/20">
-            <CardContent className="p-0">
-              {eventStatus?.streamUrl ? (
+        {/* Live Meet Section */}
+        {isFinale && hasJitsi ? (
+          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+            {isFinalist ? (
+              /* Finalist: Full Jitsi join with camera/mic */
+              <Card className="overflow-hidden border-yellow-400/30 bg-yellow-400/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    Finals Live Meet
+                    <Badge className="bg-yellow-400/20 text-yellow-400 border-yellow-400/30 text-xs ml-1">FINALIST</Badge>
+                    <div className="ml-auto flex gap-2">
+                      <Badge className="bg-green-500/10 text-green-400 border-green-500/30 text-xs gap-1"><Mic className="w-3 h-3" /> Mic On</Badge>
+                      <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs gap-1"><Video className="w-3 h-3" /> Camera On</Badge>
+                    </div>
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">You are a finalist — you can present, use camera, mic, and screen share.</p>
+                </CardHeader>
+                <CardContent className="p-0 pb-3 px-3">
+                  {joinedMeet ? (
+                    <JitsiMeet
+                      roomName={activeHackathon!.jitsiRoom!}
+                      displayName={myTeam?.name ?? "Finalist"}
+                      isHost={false}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10 gap-4">
+                      <div className="bg-yellow-400/10 p-4 rounded-full border border-yellow-400/20">
+                        <Video className="w-10 h-10 text-yellow-400" />
+                      </div>
+                      <div className="text-center">
+                        <p className="font-semibold">Finals Meet is Live!</p>
+                        <p className="text-sm text-muted-foreground mt-1">Join as a finalist — you'll have camera, mic, and screen share access.</p>
+                      </div>
+                      <Button className="gap-2 bg-yellow-500 hover:bg-yellow-600 text-black font-bold" onClick={() => setJoinedMeet(true)}>
+                        <Video className="w-4 h-4" /> Join Finals Meet
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              /* Non-finalist: "Finals in progress" view */
+              <Card className="overflow-hidden border-primary/20">
+                <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
+                  <div className="bg-primary/10 p-4 rounded-full border border-primary/20">
+                    <Eye className="w-10 h-10 text-primary" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 justify-center mb-2">
+                      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      <span className="font-mono font-bold text-sm">FINALS IN PROGRESS</span>
+                    </div>
+                    <p className="text-muted-foreground text-sm max-w-sm">
+                      The finalists are presenting live. Use the polls below to participate and cheer on your favorite teams!
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Badge className="bg-primary/10 text-primary border-primary/20 text-xs"><Mic className="w-3 h-3 mr-1" /> Finalists presenting</Badge>
+                    <Badge variant="secondary" className="text-xs"><MicOff className="w-3 h-3 mr-1" /> View-only for you</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </motion.div>
+        ) : hasYoutube ? (
+          /* YouTube Stream */
+          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+            <Card className="overflow-hidden border-primary/20">
+              <CardContent className="p-0">
                 <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
                   <iframe
                     className="absolute inset-0 w-full h-full"
-                    src={`https://www.youtube.com/embed/${extractYouTubeId(eventStatus.streamUrl)}?autoplay=1`}
+                    src={`https://www.youtube.com/embed/${extractYouTubeId(activeHackathon?.streamUrl ?? eventStatus?.streamUrl ?? "")}?autoplay=1`}
                     title="HackForge Live Stream"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
                 </div>
-              ) : (
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          /* Stream Offline */
+          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+            <Card className="overflow-hidden border-primary/20">
+              <CardContent className="p-0">
                 <div className="flex flex-col items-center justify-center h-52 bg-card text-muted-foreground gap-4">
                   <Tv className="w-12 h-12 opacity-30" />
                   <div className="text-center">
@@ -261,10 +377,10 @@ export default function Watch() {
                     <p className="text-sm mt-1">The live stream will appear here when it goes live.</p>
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Event Info + Voting */}
         <div className="grid md:grid-cols-2 gap-6">

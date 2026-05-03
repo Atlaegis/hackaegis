@@ -1,0 +1,182 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { db, registrationsTable, participationCodesTable, adminLogsTable, hackathonsTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
+import { extractToken, getSessionFromToken } from "../lib/auth";
+
+const router: IRouter = Router();
+
+async function requireAdmin(req: Request, res: Response): Promise<boolean> {
+  const token = extractToken(req.headers.authorization);
+  const session = await getSessionFromToken(token);
+  if (!session?.isAdmin) {
+    res.status(401).json({ error: "unauthorized", message: "Admin access required" });
+    return false;
+  }
+  return true;
+}
+
+async function logAction(action: string, details?: string) {
+  await db.insert(adminLogsTable).values({ action, details: details ?? null });
+}
+
+function generateParticipantCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "HACKFORGE_PART_";
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+// ─── Public: submit registration ─────────────────────────────────────────────
+router.post("/register", async (req: Request, res: Response) => {
+  const { hackathonId, fullName, email, teamName, phone, memberCount, paymentMode, notes } = req.body ?? {};
+
+  if (!fullName || !email || !teamName) {
+    res.status(400).json({ error: "validation_error", message: "fullName, email, and teamName are required" });
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "validation_error", message: "Invalid email address" });
+    return;
+  }
+
+  let resolvedHackathonId: number | null = hackathonId ?? null;
+  if (!resolvedHackathonId) {
+    const [active] = await db.select({ id: hackathonsTable.id }).from(hackathonsTable).where(eq(hackathonsTable.status, "active")).orderBy(desc(hackathonsTable.id));
+    resolvedHackathonId = active?.id ?? null;
+  }
+
+  const [reg] = await db.insert(registrationsTable).values({
+    hackathonId: resolvedHackathonId,
+    fullName: String(fullName).trim(),
+    email: String(email).trim().toLowerCase(),
+    teamName: String(teamName).trim(),
+    phone: phone ? String(phone).trim() : null,
+    memberCount: typeof memberCount === "number" ? memberCount : 1,
+    paymentMode: paymentMode ?? "offline",
+    paymentStatus: "pending",
+    notes: notes ? String(notes).trim() : null,
+  }).returning();
+
+  await logAction("registration_submitted", `Team: ${teamName}, Email: ${email}`);
+  res.status(201).json({ id: reg.id, message: "Registration submitted. Admin will review and assign your code." });
+});
+
+// ─── Admin: list all registrations ───────────────────────────────────────────
+router.get("/admin/registrations", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const regs = await db.select().from(registrationsTable).orderBy(desc(registrationsTable.createdAt));
+  res.json(regs.map((r) => ({
+    id: r.id,
+    hackathonId: r.hackathonId ?? null,
+    fullName: r.fullName,
+    email: r.email,
+    teamName: r.teamName,
+    phone: r.phone ?? null,
+    memberCount: r.memberCount,
+    paymentMode: r.paymentMode,
+    paymentStatus: r.paymentStatus,
+    notes: r.notes ?? null,
+    participantCode: r.participantCode ?? null,
+    createdAt: r.createdAt.toISOString(),
+  })));
+});
+
+// ─── Admin: approve registration + generate code ──────────────────────────────
+router.post("/admin/registrations/:id/approve", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const [reg] = await db.select().from(registrationsTable).where(eq(registrationsTable.id, id));
+  if (!reg) {
+    res.status(404).json({ error: "not_found", message: "Registration not found" });
+    return;
+  }
+
+  if (reg.paymentStatus === "approved" && reg.participantCode) {
+    res.json({ message: "Already approved", code: reg.participantCode });
+    return;
+  }
+
+  // Generate a unique participant code
+  let code = generateParticipantCode();
+  let attempts = 0;
+  while (attempts < 10) {
+    const [existing] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.code, code));
+    if (!existing) break;
+    code = generateParticipantCode();
+    attempts++;
+  }
+
+  // Insert into participation_codes
+  await db.insert(participationCodesTable).values({
+    code,
+    role: "participant",
+    label: `${reg.fullName} (${reg.teamName})`,
+    isReusable: false,
+    isUsed: false,
+  });
+
+  // Update registration
+  const [updated] = await db.update(registrationsTable)
+    .set({ paymentStatus: "approved", participantCode: code })
+    .where(eq(registrationsTable.id, id))
+    .returning();
+
+  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code: ${code}`);
+  res.json({ message: "Approved", code: updated.participantCode, registration: updated });
+});
+
+// ─── Admin: reject registration ───────────────────────────────────────────────
+router.post("/admin/registrations/:id/reject", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const [updated] = await db.update(registrationsTable)
+    .set({ paymentStatus: "rejected" })
+    .where(eq(registrationsTable.id, id))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+
+  await logAction("registration_rejected", `Reg #${id} (${updated.teamName})`);
+  res.json({ message: "Rejected", registration: updated });
+});
+
+// ─── Admin: get all access credentials (access portal) ──────────────────────
+router.get("/admin/access-portal", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const [codes, regs] = await Promise.all([
+    db.select().from(participationCodesTable).orderBy(participationCodesTable.role, participationCodesTable.id),
+    db.select().from(registrationsTable).orderBy(desc(registrationsTable.createdAt)),
+  ]);
+
+  const adminCodes = codes.filter((c) => c.role === "admin");
+  const judgeCodes = codes.filter((c) => c.role === "judge");
+  const participantCodes = codes.filter((c) => c.role === "participant");
+
+  res.json({
+    adminCodes: adminCodes.map((c) => ({ id: c.id, code: c.code, label: c.label ?? "Admin", isReusable: c.isReusable })),
+    judgeCodes: judgeCodes.map((c) => ({ id: c.id, code: c.code, label: c.label ?? "Judge", isReusable: c.isReusable })),
+    participantCodes: participantCodes.map((c) => ({ id: c.id, code: c.code, label: c.label, isUsed: c.isUsed, teamId: c.teamId ?? null })),
+    registrations: regs.map((r) => ({
+      id: r.id, fullName: r.fullName, email: r.email, teamName: r.teamName,
+      paymentStatus: r.paymentStatus, participantCode: r.participantCode ?? null,
+    })),
+    summary: {
+      totalAdmin: adminCodes.length,
+      totalJudges: judgeCodes.length,
+      totalParticipants: participantCodes.length,
+      totalRegistrations: regs.length,
+      pendingRegistrations: regs.filter((r) => r.paymentStatus === "pending").length,
+      approvedRegistrations: regs.filter((r) => r.paymentStatus === "approved").length,
+    },
+  });
+});
+
+export default router;

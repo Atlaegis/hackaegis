@@ -19,7 +19,6 @@ import {
   setAuthTokenGetter,
 } from "@workspace/api-client-react";
 import type { UpdateEventStatusBodyPhase } from "@workspace/api-client-react";
-import { UpdateEventStatusBodyPhase as PhaseValues } from "@workspace/api-client-react";
 import { useAuthTokens } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -34,6 +33,7 @@ import {
   RefreshCw, Trash2, Play, Square, Plus, Terminal, Trophy, Activity,
   CheckCircle, Scale, Copy, LogOut, Zap, Globe, Archive, Edit3, X,
   UserCheck, ChevronDown, ChevronUp, Github, Monitor, FileText, AlertCircle,
+  Video, Star, Eye, Key, Shield, ClipboardList, Tv,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -49,6 +49,42 @@ function useAdminFetch<T>(url: string, deps: unknown[] = []): { data: T | null; 
   }, [url, token, ...deps]);
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
+}
+
+function adminApi(method: string, path: string, body?: unknown) {
+  const token = localStorage.getItem("hackforge_admin_token");
+  return fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: body ? JSON.stringify(body) : undefined,
+  }).then(async (r) => {
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message ?? "Request failed");
+    return d;
+  });
+}
+
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+function ConfirmDelete({ onConfirm, onCancel, label }: { onConfirm: () => void; onCancel: () => void; label: string }) {
+  return (
+    <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 border border-destructive/30">
+      <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+      <p className="text-xs text-destructive flex-1">Delete <span className="font-bold">{label}</span>?</p>
+      <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={onConfirm}>Delete</Button>
+      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onCancel}>Cancel</Button>
+    </div>
+  );
+}
+
+// ─── Score Pill ───────────────────────────────────────────────────────────────
+function ScorePill({ val, label }: { val: number | null; label: string }) {
+  if (val === null) return null;
+  return (
+    <div className="text-center">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-mono font-bold text-chart-2">{val}</p>
+    </div>
+  );
 }
 
 // ─── Dashboard Tab ────────────────────────────────────────────────────────────
@@ -119,34 +155,24 @@ interface Hackathon {
   tagline: string | null; status: string; phase: string;
   streamUrl: string | null; streamActive: boolean; resultsPublished: boolean;
   judgeResultsVisible: boolean; prizePool: string | null; grandPrize: string | null;
-  submissionLocked: boolean;
+  submissionLocked: boolean; jitsiRoom?: string | null; meetMode?: string; jitsiPassword?: string | null;
 }
 
 function HackathonsTab() {
   const { data: hackathons, loading, refetch } = useAdminFetch<Hackathon[]>("/api/hackathons");
   const { toast } = useToast();
-  const token = localStorage.getItem("hackforge_admin_token");
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", slug: "", description: "", tagline: "", prizePool: "", grandPrize: "" });
   const [editId, setEditId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<Hackathon>>({});
   const [busy, setBusy] = useState(false);
-
-  const api = async (method: string, path: string, body?: unknown) => {
-    const r = await fetch(path, {
-      method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.message ?? "Request failed");
-    return d;
-  };
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const handleCreate = async () => {
     if (!form.name || !form.slug) { toast({ title: "Name and slug required", variant: "destructive" }); return; }
     setBusy(true);
     try {
-      await api("POST", "/api/hackathons", form);
+      await adminApi("POST", "/api/hackathons", form);
       toast({ title: "Hackathon created" });
       setForm({ name: "", slug: "", description: "", tagline: "", prizePool: "", grandPrize: "" });
       setShowCreate(false);
@@ -158,9 +184,10 @@ function HackathonsTab() {
   const handleAction = async (id: number, action: "activate" | "complete" | "delete") => {
     setBusy(true);
     try {
-      if (action === "delete") await api("DELETE", `/api/hackathons/${id}`);
-      else await api("POST", `/api/hackathons/${id}/${action}`);
+      if (action === "delete") await adminApi("DELETE", `/api/hackathons/${id}`);
+      else await adminApi("POST", `/api/hackathons/${id}/${action}`);
       toast({ title: `Hackathon ${action}d` });
+      setConfirmDeleteId(null);
       refetch();
     } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
     finally { setBusy(false); }
@@ -170,7 +197,7 @@ function HackathonsTab() {
     if (!editId) return;
     setBusy(true);
     try {
-      await api("PUT", `/api/hackathons/${editId}`, editData);
+      await adminApi("PUT", `/api/hackathons/${editId}`, editData);
       toast({ title: "Hackathon updated" });
       setEditId(null);
       refetch();
@@ -236,17 +263,20 @@ function HackathonsTab() {
                     </select>
                   </div>
                   <Input placeholder="Stream URL" value={editData.streamUrl ?? h.streamUrl ?? ""} onChange={(e) => setEditData((p) => ({ ...p, streamUrl: e.target.value }))} />
-                  <div className="flex items-center gap-4 text-sm">
-                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editData.streamActive ?? h.streamActive} onChange={(e) => setEditData((p) => ({ ...p, streamActive: e.target.checked }))} /> Stream Active</label>
-                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editData.resultsPublished ?? h.resultsPublished} onChange={(e) => setEditData((p) => ({ ...p, resultsPublished: e.target.checked }))} /> Results Published</label>
-                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editData.judgeResultsVisible ?? h.judgeResultsVisible} onChange={(e) => setEditData((p) => ({ ...p, judgeResultsVisible: e.target.checked }))} /> Judge Results Visible</label>
-                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editData.submissionLocked ?? h.submissionLocked} onChange={(e) => setEditData((p) => ({ ...p, submissionLocked: e.target.checked }))} /> Lock Submissions</label>
+                  <div className="flex items-center gap-4 text-sm flex-wrap">
+                    {(["streamActive","resultsPublished","judgeResultsVisible","submissionLocked"] as const).map((key) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={(editData[key] ?? h[key]) as boolean} onChange={(e) => setEditData((p) => ({ ...p, [key]: e.target.checked }))} /> {key.replace(/([A-Z])/g, " $1")}
+                      </label>
+                    ))}
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleSaveEdit} disabled={busy}>Save Changes</Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
                   </div>
                 </div>
+              ) : confirmDeleteId === h.id ? (
+                <ConfirmDelete label={h.name} onConfirm={() => handleAction(h.id, "delete")} onCancel={() => setConfirmDeleteId(null)} />
               ) : (
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
@@ -254,7 +284,7 @@ function HackathonsTab() {
                       <h3 className="font-bold">{h.name}</h3>
                       <Badge className={`text-xs font-mono ${statusBadge[h.status] ?? ""}`}>{h.status.toUpperCase()}</Badge>
                       <Badge variant="outline" className="text-xs font-mono">{h.phase}</Badge>
-                      {h.submissionLocked && <Badge className="text-xs bg-orange-400/10 text-orange-400 border-orange-400/30">SUBMISSIONS LOCKED</Badge>}
+                      {h.submissionLocked && <Badge className="text-xs bg-orange-400/10 text-orange-400 border-orange-400/30">LOCKED</Badge>}
                     </div>
                     {h.tagline && <p className="text-sm text-muted-foreground">{h.tagline}</p>}
                     <div className="flex gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
@@ -264,9 +294,7 @@ function HackathonsTab() {
                     </div>
                   </div>
                   <div className="flex gap-1.5 flex-shrink-0 flex-wrap justify-end">
-                    <Button size="sm" variant="ghost" onClick={() => { setEditId(h.id); setEditData({}); }} className="h-8 px-2">
-                      <Edit3 className="w-3 h-3" />
-                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditId(h.id); setEditData({}); }} className="h-8 px-2"><Edit3 className="w-3 h-3" /></Button>
                     {h.status !== "active" && (
                       <Button size="sm" variant="outline" onClick={() => handleAction(h.id, "activate")} disabled={busy} className="h-8 text-xs gap-1 text-chart-3 border-chart-3/30">
                         <Zap className="w-3 h-3" /> Activate
@@ -277,12 +305,123 @@ function HackathonsTab() {
                         <Archive className="w-3 h-3" /> Complete
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => handleAction(h.id, "delete")} disabled={busy} className="h-8 px-2 text-destructive hover:text-destructive">
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteId(h.id)} className="h-8 px-2 text-destructive hover:text-destructive">
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Registrations Tab ────────────────────────────────────────────────────────
+interface Registration {
+  id: number; fullName: string; email: string; teamName: string;
+  phone: string | null; memberCount: number; paymentMode: string;
+  paymentStatus: string; notes: string | null; participantCode: string | null;
+  createdAt: string; hackathonId: number | null;
+}
+
+function RegistrationsTab() {
+  const { data: regs, loading, refetch } = useAdminFetch<Registration[]>("/api/admin/registrations");
+  const { toast } = useToast();
+  const [busy, setBusy] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+
+  const handleApprove = async (id: number) => {
+    setBusy(id);
+    try {
+      const d = await adminApi("POST", `/api/admin/registrations/${id}/approve`);
+      toast({ title: "Approved!", description: `Code: ${d.code}` });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+    finally { setBusy(null); }
+  };
+
+  const handleReject = async (id: number) => {
+    setBusy(id);
+    try {
+      await adminApi("POST", `/api/admin/registrations/${id}/reject`);
+      toast({ title: "Rejected" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+    finally { setBusy(null); }
+  };
+
+  const filtered = (regs ?? []).filter((r) => filter === "all" ? true : r.paymentStatus === filter);
+  const pending = (regs ?? []).filter((r) => r.paymentStatus === "pending").length;
+
+  const statusColor: Record<string, string> = {
+    pending: "bg-amber-400/10 text-amber-400 border-amber-400/30",
+    approved: "bg-chart-3/10 text-chart-3 border-chart-3/30",
+    rejected: "bg-destructive/10 text-destructive border-destructive/30",
+  };
+  const payModeLabel: Record<string, string> = { offline: "Offline/Cash", upi: "UPI", online: "Online" };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-2">
+          {(["all","pending","approved","rejected"] as const).map((f) => (
+            <Button key={f} size="sm" variant={filter === f ? "default" : "outline"} className="h-8 text-xs capitalize" onClick={() => setFilter(f)}>
+              {f} {f === "pending" && pending > 0 && <Badge className="ml-1.5 bg-amber-400/20 text-amber-400 border-amber-400/30 text-xs px-1.5 py-0">{pending}</Badge>}
+            </Button>
+          ))}
+        </div>
+        <Button size="sm" variant="ghost" onClick={refetch} className="gap-1 text-xs text-muted-foreground">
+          <RefreshCw className="w-3 h-3" /> Refresh
+        </Button>
+      </div>
+
+      {loading && <p className="text-center text-muted-foreground text-sm py-8">Loading...</p>}
+      {!loading && filtered.length === 0 && <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">No registrations found.</CardContent></Card>}
+
+      <div className="space-y-3">
+        {filtered.map((reg) => (
+          <Card key={reg.id} className={reg.paymentStatus === "pending" ? "border-amber-400/20" : ""}>
+            <CardContent className="py-3 px-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="font-bold text-sm">#{reg.id}</span>
+                    <span className="font-semibold">{reg.teamName}</span>
+                    <Badge className={`text-xs ${statusColor[reg.paymentStatus] ?? ""}`}>{reg.paymentStatus.toUpperCase()}</Badge>
+                    <Badge variant="outline" className="text-xs">{payModeLabel[reg.paymentMode] ?? reg.paymentMode}</Badge>
+                    <Badge variant="secondary" className="text-xs">{reg.memberCount} member{reg.memberCount !== 1 ? "s" : ""}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{reg.fullName} · {reg.email}{reg.phone && ` · ${reg.phone}`}</p>
+                  {reg.notes && <p className="text-xs text-muted-foreground/70 mt-1 italic">"{reg.notes}"</p>}
+                  {reg.participantCode && (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">{reg.participantCode}</span>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => { navigator.clipboard.writeText(reg.participantCode!); }}>
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground/60 mt-1">{new Date(reg.createdAt).toLocaleString()}</p>
+                </div>
+                {reg.paymentStatus === "pending" && (
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button size="sm" className="h-8 text-xs bg-chart-3 hover:bg-chart-3/90 gap-1" onClick={() => handleApprove(reg.id)} disabled={busy === reg.id}>
+                      <CheckCircle className="w-3 h-3" /> Approve
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs text-destructive border-destructive/30 gap-1" onClick={() => handleReject(reg.id)} disabled={busy === reg.id}>
+                      <X className="w-3 h-3" /> Reject
+                    </Button>
+                  </div>
+                )}
+                {reg.paymentStatus === "approved" && !reg.participantCode && (
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => handleApprove(reg.id)} disabled={busy === reg.id}>
+                    <Key className="w-3 h-3" /> Generate Code
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -300,7 +439,7 @@ function CodesTab() {
   const [count, setCount] = useState(5);
   const { toast } = useToast();
   const { data: teams } = useListTeams();
-  const token = localStorage.getItem("hackforge_admin_token");
+  const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
 
   const copyAll = () => {
     const unused = codes?.filter((c) => !c.isUsed).map((c) => c.code).join("\n") ?? "";
@@ -316,6 +455,7 @@ function CodesTab() {
   const teamMap = new Map(teams?.map((t) => [t.id, t.name]) ?? []);
 
   const assignTeam = async (code: string, teamId: number | "") => {
+    const token = localStorage.getItem("hackforge_admin_token");
     if (teamId === "") {
       await fetch("/api/teams/unassign-code", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ code }) });
     } else {
@@ -356,26 +496,41 @@ function CodesTab() {
         <CardContent>
           <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
             {codesWithTeam.map((c) => (
-              <div key={c.code} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-muted/30 hover:bg-muted/50 gap-3">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <span className="font-mono text-xs truncate">{c.code}</span>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {c.isUsed ? <Badge variant="secondary" className="text-xs bg-chart-3/20 text-chart-3 border-0">USED</Badge> : <Badge variant="outline" className="text-xs text-muted-foreground">AVAILABLE</Badge>}
+              <div key={c.code} className="rounded-lg bg-muted/30 hover:bg-muted/50">
+                {confirmDeleteCode === c.code ? (
+                  <div className="p-2">
+                    <ConfirmDelete label={c.code} onConfirm={() => deleteCode.mutate({ code: c.code }, { onSuccess: () => { toast({ title: "Code deleted" }); setConfirmDeleteCode(null); refetch(); } })} onCancel={() => setConfirmDeleteCode(null)} />
                   </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <select
-                    className="h-7 text-xs rounded border border-input bg-background px-2"
-                    value={c.teamId ?? ""}
-                    onChange={(e) => assignTeam(c.code, e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-                  >
-                    <option value="">No team</option>
-                    {teams?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigator.clipboard.writeText(c.code)}><Copy className="w-3 h-3" /></Button>
-                  {c.isUsed && <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => resetCode.mutate({ code: c.code }, { onSuccess: () => { toast({ title: "Code reset" }); refetch(); } })}><RefreshCw className="w-3 h-3" /></Button>}
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteCode.mutate({ code: c.code }, { onSuccess: () => { toast({ title: "Code deleted" }); refetch(); } })}><Trash2 className="w-3 h-3" /></Button>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-between py-2.5 px-3 gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="font-mono text-xs truncate">{c.code}</span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {c.isUsed ? <Badge variant="secondary" className="text-xs bg-chart-3/20 text-chart-3 border-0">USED</Badge> : <Badge variant="outline" className="text-xs text-muted-foreground">AVAILABLE</Badge>}
+                      </div>
+                      {/* Show team name badge when assigned */}
+                      {c.teamId && teamMap.get(c.teamId) && (
+                        <Badge className="text-xs bg-chart-2/10 text-chart-2 border-chart-2/20 gap-1">
+                          <Users className="w-2.5 h-2.5" />
+                          {teamMap.get(c.teamId)}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <select
+                        className="h-7 text-xs rounded border border-input bg-background px-2"
+                        value={c.teamId ?? ""}
+                        onChange={(e) => assignTeam(c.code, e.target.value === "" ? "" : parseInt(e.target.value, 10))}
+                      >
+                        <option value="">No team</option>
+                        {teams?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigator.clipboard.writeText(c.code)}><Copy className="w-3 h-3" /></Button>
+                      {c.isUsed && <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => resetCode.mutate({ code: c.code }, { onSuccess: () => { toast({ title: "Code reset" }); refetch(); } })}><RefreshCw className="w-3 h-3" /></Button>}
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => setConfirmDeleteCode(c.code)}><Trash2 className="w-3 h-3" /></Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
             {!codesWithTeam.length && <p className="text-center text-muted-foreground text-sm py-6">No participant codes yet. Generate some above.</p>}
@@ -393,22 +548,21 @@ function TeamsTab() {
   const updateTeam = useUpdateTeam();
   const deleteTeam = useDeleteTeam();
   const { toast } = useToast();
-  const token = localStorage.getItem("hackforge_admin_token");
   const [newTeam, setNewTeam] = useState({ name: "", projectTitle: "", description: "", githubUrl: "" });
   const [editId, setEditId] = useState<number | null>(null);
   const [editData, setEditData] = useState({ name: "", projectTitle: "", description: "", githubUrl: "" });
   const [expanded, setExpanded] = useState<number | null>(null);
   const [codeInput, setCodeInput] = useState<Record<number, string>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const { data: hackathons } = useAdminFetch<Hackathon[]>("/api/hackathons");
+  const token = localStorage.getItem("hackforge_admin_token");
 
-  // teams come with members from updated API
   const teams = (teamsRaw ?? []) as unknown as Array<{
     id: number; name: string; projectTitle: string; description: string | null;
-    githubUrl: string | null; hackathonId: number | null;
+    githubUrl: string | null; hackathonId: number | null; isFinalist: boolean;
     members: Array<{ id: number; code: string; label: string | null }>;
   }>;
 
-  const activeHackathon = hackathons?.find((h) => h.status === "active");
   const hackathonMap = new Map(hackathons?.map((h) => [h.id, h.name]) ?? []);
 
   const assignCode = async (teamId: number) => {
@@ -421,124 +575,121 @@ function TeamsTab() {
     });
     const d = await r.json();
     if (!r.ok) { toast({ title: "Error", description: d.message, variant: "destructive" }); return; }
-    toast({ title: "Code assigned", description: `${code} → ${teams.find((t) => t.id === teamId)?.name}` });
+    toast({ title: "Code assigned", description: `${code} → ${d.teamName}` });
     setCodeInput((p) => ({ ...p, [teamId]: "" }));
     refetch();
   };
 
-  const unassignCode = async (code: string) => {
-    await fetch("/api/teams/unassign-code", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ code }),
-    });
-    toast({ title: "Code unassigned" });
-    refetch();
+  const handleToggleFinalist = async (teamId: number, current: boolean) => {
+    try {
+      await adminApi("POST", `/api/teams/${teamId}/finalist`, { isFinalist: !current });
+      toast({ title: !current ? "Marked as Finalist" : "Removed from Finalists" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
   };
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-mono">ADD TEAM</CardTitle>
-          {activeHackathon && <CardDescription>Will be added to active event: <strong>{activeHackathon.name}</strong></CardDescription>}
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Input placeholder="Team name *" value={newTeam.name} onChange={(e) => setNewTeam((p) => ({ ...p, name: e.target.value }))} />
-              <Input placeholder="Project title *" value={newTeam.projectTitle} onChange={(e) => setNewTeam((p) => ({ ...p, projectTitle: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input placeholder="Description" value={newTeam.description} onChange={(e) => setNewTeam((p) => ({ ...p, description: e.target.value }))} />
-              <Input placeholder="GitHub URL" value={newTeam.githubUrl} onChange={(e) => setNewTeam((p) => ({ ...p, githubUrl: e.target.value }))} />
-            </div>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (!newTeam.name || !newTeam.projectTitle) { toast({ title: "Name and project title required", variant: "destructive" }); return; }
-                createTeam.mutate(
-                  { data: { name: newTeam.name, projectTitle: newTeam.projectTitle, description: newTeam.description || null, githubUrl: newTeam.githubUrl || null } },
-                  { onSuccess: () => { toast({ title: "Team created" }); refetch(); setNewTeam({ name: "", projectTitle: "", description: "", githubUrl: "" }); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) }
-                );
-              }}
-              disabled={!newTeam.name || !newTeam.projectTitle || createTeam.isPending}
-            >
-              <Plus className="w-4 h-4 mr-2" /> Add Team
-            </Button>
+      {/* Create form */}
+      <Card className="border-primary/20">
+        <CardHeader><CardTitle className="text-sm font-mono">CREATE TEAM</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input placeholder="Team Name *" value={newTeam.name} onChange={(e) => setNewTeam((p) => ({ ...p, name: e.target.value }))} />
+            <Input placeholder="Project Title *" value={newTeam.projectTitle} onChange={(e) => setNewTeam((p) => ({ ...p, projectTitle: e.target.value }))} />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input placeholder="GitHub URL" value={newTeam.githubUrl} onChange={(e) => setNewTeam((p) => ({ ...p, githubUrl: e.target.value }))} />
+            <Input placeholder="Description" value={newTeam.description} onChange={(e) => setNewTeam((p) => ({ ...p, description: e.target.value }))} />
+          </div>
+          <Button size="sm" onClick={() => {
+            if (!newTeam.name || !newTeam.projectTitle) { toast({ title: "Name and project title required", variant: "destructive" }); return; }
+            createTeam.mutate({ data: newTeam }, { onSuccess: () => { toast({ title: "Team created" }); setNewTeam({ name: "", projectTitle: "", description: "", githubUrl: "" }); refetch(); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) });
+          }} disabled={createTeam.isPending || !newTeam.name || !newTeam.projectTitle}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> Create Team
+          </Button>
         </CardContent>
       </Card>
 
+      {/* Teams list */}
       <div className="space-y-3">
         {teams.map((team) => (
-          <Card key={team.id} className="overflow-hidden">
+          <Card key={team.id} className={team.isFinalist ? "border-yellow-400/30 bg-yellow-400/5" : ""}>
             <CardContent className="py-3 px-4">
-              {editId === team.id ? (
+              {confirmDeleteId === team.id ? (
+                <ConfirmDelete label={team.name} onConfirm={() => deleteTeam.mutate({ id: team.id }, { onSuccess: () => { toast({ title: "Team deleted" }); setConfirmDeleteId(null); refetch(); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) })} onCancel={() => setConfirmDeleteId(null)} />
+              ) : editId === team.id ? (
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <Input value={editData.name} onChange={(e) => setEditData((p) => ({ ...p, name: e.target.value }))} placeholder="Team name" />
                     <Input value={editData.projectTitle} onChange={(e) => setEditData((p) => ({ ...p, projectTitle: e.target.value }))} placeholder="Project title" />
-                    <Input value={editData.description} onChange={(e) => setEditData((p) => ({ ...p, description: e.target.value }))} placeholder="Description" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
                     <Input value={editData.githubUrl} onChange={(e) => setEditData((p) => ({ ...p, githubUrl: e.target.value }))} placeholder="GitHub URL" />
+                    <Input value={editData.description} onChange={(e) => setEditData((p) => ({ ...p, description: e.target.value }))} placeholder="Description" />
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => updateTeam.mutate({ id: team.id, data: { name: editData.name, projectTitle: editData.projectTitle, description: editData.description || null, githubUrl: editData.githubUrl || null } }, { onSuccess: () => { toast({ title: "Updated" }); refetch(); setEditId(null); } })}>Save</Button>
+                    <Button size="sm" onClick={() => updateTeam.mutate({ id: team.id, data: editData }, { onSuccess: () => { toast({ title: "Team updated" }); setEditId(null); refetch(); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) })}>Save</Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
                   </div>
                 </div>
               ) : (
                 <div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold">{team.name}</p>
-                        {team.hackathonId && <Badge variant="outline" className="text-xs">{hackathonMap.get(team.hackathonId) ?? `#${team.hackathonId}`}</Badge>}
-                        <Badge variant="secondary" className="text-xs"><UserCheck className="w-3 h-3 mr-1" />{team.members.length} member{team.members.length !== 1 ? "s" : ""}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate">{team.projectTitle}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                      <span className="font-bold truncate">{team.name}</span>
+                      {team.isFinalist && <Badge className="bg-yellow-400/10 text-yellow-400 border-yellow-400/30 text-xs gap-1"><Star className="w-2.5 h-2.5" />FINALIST</Badge>}
+                      {team.hackathonId && hackathonMap.get(team.hackathonId) && (
+                        <Badge variant="outline" className="text-xs">{hackathonMap.get(team.hackathonId)}</Badge>
+                      )}
+                      <span className="text-xs text-muted-foreground truncate">{team.projectTitle}</span>
                     </div>
                     <div className="flex gap-1.5 flex-shrink-0">
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setExpanded(expanded === team.id ? null : team.id)}>
+                      <Button size="sm" variant={team.isFinalist ? "default" : "outline"} className={`h-7 text-xs gap-1 ${team.isFinalist ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""}`} onClick={() => handleToggleFinalist(team.id, team.isFinalist)}>
+                        <Star className="w-2.5 h-2.5" />{team.isFinalist ? "Finalist" : "Set Finalist"}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle, description: team.description ?? "", githubUrl: team.githubUrl ?? "" }); }}><Edit3 className="w-3 h-3" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setExpanded(expanded === team.id ? null : team.id)}>
                         {expanded === team.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle ?? "", description: team.description ?? "", githubUrl: team.githubUrl ?? "" }); }}>
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteTeam.mutate({ id: team.id }, { onSuccess: () => { toast({ title: "Team deleted" }); refetch(); } })}>
-                        <Trash2 className="w-3.5 h-3.5" />
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => setConfirmDeleteId(team.id)}>
+                        <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
+
                   <AnimatePresence>
                     {expanded === team.id && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 pt-3 border-t border-border space-y-3">
-                        <div>
-                          <p className="text-xs font-mono text-muted-foreground mb-2">TEAM MEMBERS (LINKED CODES)</p>
-                          {team.members.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No participant codes assigned yet.</p>
-                          ) : (
-                            <div className="space-y-1">
-                              {team.members.map((m) => (
-                                <div key={m.id} className="flex items-center justify-between py-1 px-2 rounded bg-muted/30 text-xs">
-                                  <span className="font-mono">{m.code}</span>
-                                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive" onClick={() => unassignCode(m.code)}>Remove</Button>
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                        <div className="mt-3 pt-3 border-t border-border space-y-2">
+                          {team.githubUrl && (
+                            <a href={team.githubUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary">
+                              <Github className="w-3 h-3" /> {team.githubUrl}
+                            </a>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-muted-foreground">Members ({team.members?.length ?? 0}):</p>
+                            <div className="flex flex-wrap gap-1">
+                              {team.members?.map((m) => (
+                                <div key={m.id} className="flex items-center gap-1">
+                                  <span className="text-xs font-mono bg-muted/60 px-2 py-0.5 rounded">{m.code}</span>
+                                  {m.label && <span className="text-xs text-muted-foreground">({m.label})</span>}
                                 </div>
                               ))}
+                              {!team.members?.length && <span className="text-xs text-muted-foreground">No codes linked</span>}
                             </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="HACKFORGE_PART_XXXXXXXX"
-                            value={codeInput[team.id] ?? ""}
-                            onChange={(e) => setCodeInput((p) => ({ ...p, [team.id]: e.target.value.toUpperCase() }))}
-                            className="h-8 text-xs font-mono"
-                            onKeyDown={(e) => e.key === "Enter" && assignCode(team.id)}
-                          />
-                          <Button size="sm" className="h-8 px-3 text-xs" onClick={() => assignCode(team.id)}>
-                            <UserCheck className="w-3 h-3 mr-1" /> Assign
-                          </Button>
+                          </div>
+                          <div className="flex gap-2 items-center">
+                            <Input
+                              placeholder="Assign code: HACKFORGE_PART_..."
+                              value={codeInput[team.id] ?? ""}
+                              onChange={(e) => setCodeInput((p) => ({ ...p, [team.id]: e.target.value.toUpperCase() }))}
+                              className="h-8 text-xs font-mono"
+                            />
+                            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => assignCode(team.id)}>
+                              <UserCheck className="w-3 h-3 mr-1" /> Assign
+                            </Button>
+                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -548,147 +699,109 @@ function TeamsTab() {
             </CardContent>
           </Card>
         ))}
-        {!teams.length && <p className="text-center text-muted-foreground text-sm py-8">No teams yet. Add the first team above.</p>}
+        {!teams.length && <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">No teams yet.</CardContent></Card>}
       </div>
     </div>
   );
 }
 
-// ─── Judges Tab ───────────────────────────────────────────────────────────────
-interface JudgeCode { id: number; code: string; label: string | null; createdAt: string; }
-
+// ─── Judges Tab ────────────────────────────────────────────────────────────────
 function JudgesTab() {
-  const { data: judgeCodes, loading, refetch } = useAdminFetch<JudgeCode[]>("/api/codes/judges");
+  const { data: codes, loading, refetch } = useAdminFetch<Array<{ id: number; code: string; label: string | null; isUsed: boolean }>>("/api/codes?role=judge");
   const { toast } = useToast();
   const token = localStorage.getItem("hackforge_admin_token");
-  const [label, setLabel] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
 
   const createJudge = async () => {
-    setBusy(true);
+    if (!newLabel) { toast({ title: "Label required", variant: "destructive" }); return; }
+    setCreating(true);
     try {
-      const r = await fetch("/api/codes/judges", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ label: label.trim() || undefined }),
+      const n = ((codes?.length ?? 0) + 1).toString().padStart(2, "0");
+      const code = `HACKFORGE_JUDGE@${n}`;
+      const r = await fetch("/api/codes/judge", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ label: newLabel, code }),
       });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.message);
-      toast({ title: "Judge code created", description: d.code });
-      setLabel("");
+      if (!r.ok) throw new Error("Failed to create judge");
+      toast({ title: "Judge created", description: code });
+      setNewLabel("");
       refetch();
     } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
-    finally { setBusy(false); }
-  };
-
-  const deleteJudge = async (id: number, code: string) => {
-    await fetch(`/api/codes/judges/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-    toast({ title: "Judge code deleted", description: code });
-    refetch();
-  };
-
-  const copyAll = () => {
-    const text = (judgeCodes ?? []).map((j) => `${j.label ?? "Judge"}: ${j.code}`).join("\n");
-    navigator.clipboard.writeText(text);
-    toast({ title: "Judge codes copied" });
+    finally { setCreating(false); }
   };
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-mono">CREATE JUDGE CODE</CardTitle>
-          <CardDescription>Judge codes are reusable and grant access to the scoring interface.</CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardHeader><CardTitle className="text-sm font-mono">ADD JUDGE</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
           <div className="flex gap-3">
-            <Input placeholder="Judge name / label (optional)" value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createJudge()} />
-            <Button onClick={createJudge} disabled={busy}><Plus className="w-4 h-4 mr-2" /> Add Judge</Button>
+            <Input placeholder="Judge name / label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+            <Button onClick={createJudge} disabled={creating || !newLabel}><Plus className="w-4 h-4 mr-1" /> Add</Button>
           </div>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-sm font-mono">JUDGE CODES</CardTitle>
-              <CardDescription>{judgeCodes?.length ?? 0} judges configured</CardDescription>
-            </div>
-            {(judgeCodes?.length ?? 0) > 0 && (
-              <Button variant="outline" size="sm" onClick={copyAll}><Copy className="w-3 h-3 mr-1" /> Copy All</Button>
+      <div className="space-y-2">
+        {loading && <p className="text-muted-foreground text-sm text-center py-4">Loading...</p>}
+        {codes?.map((c) => (
+          <div key={c.code} className="rounded-lg bg-muted/30">
+            {confirmDeleteCode === c.code ? (
+              <div className="p-2">
+                <ConfirmDelete label={`${c.label ?? c.code}`} onConfirm={async () => {
+                  await adminApi("DELETE", `/api/codes/${c.code}`);
+                  toast({ title: "Judge code deleted" }); setConfirmDeleteCode(null); refetch();
+                }} onCancel={() => setConfirmDeleteCode(null)} />
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <Scale className="w-4 h-4 text-chart-2 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{c.label ?? "Judge"}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{c.code}</p>
+                </div>
+                <Badge variant={c.isUsed ? "secondary" : "outline"} className={`text-xs ${c.isUsed ? "text-chart-3" : ""}`}>{c.isUsed ? "ACTIVE" : "UNUSED"}</Badge>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigator.clipboard.writeText(c.code)}><Copy className="w-3 h-3" /></Button>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => setConfirmDeleteCode(c.code)}><Trash2 className="w-3 h-3" /></Button>
+              </div>
             )}
           </div>
-        </CardHeader>
-        <CardContent>
-          {loading && <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>}
-          <div className="space-y-2">
-            {judgeCodes?.map((j) => (
-              <div key={j.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-muted/30 hover:bg-muted/50">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="font-mono text-sm">{j.code}</p>
-                    {j.label && <p className="text-xs text-muted-foreground">{j.label}</p>}
-                  </div>
-                  <Badge className="text-xs bg-chart-2/10 text-chart-2 border-chart-2/30">JUDGE</Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { navigator.clipboard.writeText(j.code); toast({ title: "Code copied" }); }}><Copy className="w-3 h-3" /></Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteJudge(j.id, j.code)}><Trash2 className="w-3 h-3" /></Button>
-                </div>
-              </div>
-            ))}
-            {!loading && !judgeCodes?.length && <p className="text-center text-muted-foreground text-sm py-4">No judge codes yet.</p>}
-          </div>
-        </CardContent>
-      </Card>
+        ))}
+        {!loading && !codes?.length && <p className="text-center text-muted-foreground text-sm py-6">No judge codes yet.</p>}
+      </div>
     </div>
   );
 }
 
-// ─── Scores Tab ───────────────────────────────────────────────────────────────
-interface TeamScore {
-  rank: number; teamId: number; hackathonId: number | null; teamName: string; projectTitle: string;
-  demoUrl: string | null; githubUrl: string | null; slidesUrl: string | null; hasSubmission: boolean;
-  averageScore: number | null; averageInnovation: number | null; averageExecution: number | null;
-  averagePresentation: number | null; judgesScored: number; totalJudges: number;
-  judgeBreakdown: Array<{ judgeId: number; judgeName: string; score: number; innovation: number | null; execution: number | null; presentation: number | null; feedback: string | null; updatedAt: string }>;
-}
-
-interface ScoreData { judgeCount: number; teams: TeamScore[]; }
-
+// ─── Scores Tab ────────────────────────────────────────────────────────────────
 function ScoresTab() {
-  const { data: scoreData, loading, refetch } = useAdminFetch<ScoreData>("/api/admin/scores");
-  const { toast } = useToast();
+  const { data: scoreData, refetch, isFetching: loading } = useGetAdminDashboard();
   const [expanded, setExpanded] = useState<number | null>(null);
-
-  const ScorePill = ({ val, label }: { val: number | null; label: string }) =>
-    val !== null ? (
-      <div className="text-center">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="font-mono font-semibold text-sm">{val}</p>
-      </div>
-    ) : null;
+  const sd = scoreData as (typeof scoreData & {
+    teams?: Array<{
+      teamId: number; teamName: string; projectTitle: string; rank: number;
+      averageScore: number; averageInnovation: number | null;
+      averageExecution: number | null; averagePresentation: number | null;
+      judgesScored: number; totalJudges: number; hasSubmission: boolean;
+      githubUrl: string | null; demoUrl: string | null; slidesUrl: string | null;
+      judgeBreakdown: Array<{ judgeId: number; judgeName: string; score: number; innovation: number | null; execution: number | null; presentation: number | null; feedback: string | null }>;
+    }>;
+  }) | undefined;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-mono text-muted-foreground">JUDGE SCORES — AGGREGATE VIEW</p>
-          {scoreData && <p className="text-xs text-muted-foreground mt-0.5">{scoreData.judgeCount} judges · {scoreData.teams.length} teams</p>}
-        </div>
+    <div className="space-y-4">
+      <div className="flex justify-end">
         <Button variant="ghost" size="sm" onClick={() => refetch()} className="text-muted-foreground gap-1.5 text-xs">
           <RefreshCw className="w-3 h-3" /> Refresh
         </Button>
       </div>
-
       {loading && <p className="text-center text-muted-foreground text-sm py-8">Loading scores...</p>}
-      {!loading && !scoreData?.teams.length && (
+      {!loading && !sd?.teams?.length && (
         <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">No scores submitted yet.</CardContent></Card>
       )}
-
       <div className="space-y-3">
-        {scoreData?.teams.map((team) => {
+        {sd?.teams?.map((team) => {
           const scored = team.judgesScored > 0;
           const pct = team.totalJudges > 0 ? Math.round((team.judgesScored / team.totalJudges) * 100) : 0;
           return (
@@ -734,7 +847,6 @@ function ScoresTab() {
                     </Button>
                   </div>
                 </div>
-
                 <AnimatePresence>
                   {expanded === team.teamId && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 pt-3 border-t border-border">
@@ -749,9 +861,9 @@ function ScoresTab() {
                                 {jb.feedback && <p className="text-muted-foreground mt-0.5 italic">"{jb.feedback}"</p>}
                               </div>
                               <div className="flex gap-3 text-right flex-shrink-0">
-                                {jb.innovation !== null && <div><p className="text-muted-foreground">Innovation</p><p className="font-mono font-bold">{jb.innovation}</p></div>}
-                                {jb.execution !== null && <div><p className="text-muted-foreground">Execution</p><p className="font-mono font-bold">{jb.execution}</p></div>}
-                                {jb.presentation !== null && <div><p className="text-muted-foreground">Presentation</p><p className="font-mono font-bold">{jb.presentation}</p></div>}
+                                {jb.innovation !== null && <div><p className="text-muted-foreground">Innov.</p><p className="font-mono font-bold">{jb.innovation}</p></div>}
+                                {jb.execution !== null && <div><p className="text-muted-foreground">Exec.</p><p className="font-mono font-bold">{jb.execution}</p></div>}
+                                {jb.presentation !== null && <div><p className="text-muted-foreground">Pres.</p><p className="font-mono font-bold">{jb.presentation}</p></div>}
                                 <div><p className="text-muted-foreground">Overall</p><p className="font-mono font-bold text-primary text-sm">{jb.score}</p></div>
                               </div>
                             </div>
@@ -826,6 +938,173 @@ function PollsTab() {
         ))}
         {!polls?.length && <p className="text-center text-muted-foreground text-sm py-6">No polls yet.</p>}
       </div>
+    </div>
+  );
+}
+
+// ─── Live Meet Tab ────────────────────────────────────────────────────────────
+function LiveTab() {
+  const { data: hackathons, refetch } = useAdminFetch<Hackathon[]>("/api/hackathons");
+  const { data: teamsRaw } = useListTeams();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const activeHackathon = hackathons?.find((h) => h.status === "active");
+  const teams = (teamsRaw ?? []) as Array<{ id: number; name: string; isFinalist: boolean }>;
+
+  const [meetForm, setMeetForm] = useState({ jitsiRoom: "", meetMode: "youtube", jitsiPassword: "" });
+
+  useEffect(() => {
+    if (activeHackathon) {
+      setMeetForm({
+        jitsiRoom: activeHackathon.jitsiRoom ?? "",
+        meetMode: activeHackathon.meetMode ?? "youtube",
+        jitsiPassword: activeHackathon.jitsiPassword ?? "",
+      });
+    }
+  }, [activeHackathon?.id]);
+
+  const handleUpdateMeet = async () => {
+    if (!activeHackathon) { toast({ title: "No active hackathon", variant: "destructive" }); return; }
+    setBusy(true);
+    try {
+      await adminApi("PUT", `/api/hackathons/${activeHackathon.id}`, {
+        jitsiRoom: meetForm.jitsiRoom || null,
+        meetMode: meetForm.meetMode,
+        jitsiPassword: meetForm.jitsiPassword || null,
+      });
+      toast({ title: "Meet config updated" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+    finally { setBusy(false); }
+  };
+
+  const handleLaunchMeet = async () => {
+    if (!activeHackathon) { toast({ title: "No active hackathon", variant: "destructive" }); return; }
+    const roomName = meetForm.jitsiRoom || `HackForge-${Date.now()}`;
+    setBusy(true);
+    try {
+      await adminApi("PUT", `/api/hackathons/${activeHackathon.id}`, {
+        jitsiRoom: roomName,
+        meetMode: "jitsi",
+        phase: "finale",
+        streamActive: true,
+      });
+      setMeetForm((p) => ({ ...p, jitsiRoom: roomName, meetMode: "jitsi" }));
+      toast({ title: "Meet Launched!", description: `Room: ${roomName}` });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+    finally { setBusy(false); }
+  };
+
+  const handleToggleFinalist = async (teamId: number, current: boolean) => {
+    try {
+      await adminApi("POST", `/api/teams/${teamId}/finalist`, { isFinalist: !current });
+      toast({ title: !current ? "Marked as Finalist" : "Removed" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  const isJitsiActive = activeHackathon?.meetMode === "jitsi" || activeHackathon?.meetMode === "both";
+
+  return (
+    <div className="space-y-6">
+      {!activeHackathon && (
+        <Card className="border-amber-400/20">
+          <CardContent className="py-6 text-center text-muted-foreground text-sm">
+            <AlertCircle className="w-6 h-6 mx-auto mb-2 text-amber-400" />
+            No active hackathon. Activate one first from the Events tab.
+          </CardContent>
+        </Card>
+      )}
+
+      {activeHackathon && (
+        <>
+          {/* Status card */}
+          <Card className={isJitsiActive ? "border-red-500/30 bg-red-500/5" : "border-border"}>
+            <CardContent className="py-3 px-4 flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full ${isJitsiActive ? "bg-red-500 animate-pulse" : "bg-muted-foreground"}`} />
+              <div className="flex-1">
+                <p className="font-semibold text-sm">{isJitsiActive ? "Meet is LIVE" : "Meet is Offline"}</p>
+                {activeHackathon.jitsiRoom && (
+                  <p className="text-xs text-muted-foreground font-mono">Room: {activeHackathon.jitsiRoom}</p>
+                )}
+              </div>
+              {isJitsiActive && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => window.open(`https://meet.jit.si/${activeHackathon.jitsiRoom}`, "_blank")}>
+                    <Tv className="w-3 h-3" /> Open Room
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Launch button */}
+          <Card className="border-primary/20">
+            <CardHeader><CardTitle className="text-sm font-mono">LAUNCH LIVE MEET</CardTitle><CardDescription>One-click to launch the finale meet for judges and finalists</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <Button className="w-full h-12 gap-2 bg-red-600 hover:bg-red-700 text-white font-bold" onClick={handleLaunchMeet} disabled={busy}>
+                <Video className="w-5 h-5" /> Launch Finals Meet
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">This will set phase to "finale", create a Jitsi room, and enable Jitsi meet mode</p>
+            </CardContent>
+          </Card>
+
+          {/* Meet config */}
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">MEET CONFIGURATION</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Jitsi Room Name</label>
+                <Input value={meetForm.jitsiRoom} onChange={(e) => setMeetForm((p) => ({ ...p, jitsiRoom: e.target.value }))} placeholder="HackForge-2025-Finals" className="mt-1 font-mono" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Meet Mode</label>
+                <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm mt-1" value={meetForm.meetMode} onChange={(e) => setMeetForm((p) => ({ ...p, meetMode: e.target.value }))}>
+                  <option value="youtube">YouTube Only</option>
+                  <option value="jitsi">Jitsi Meet Only</option>
+                  <option value="both">Both (Jitsi + YouTube)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Jitsi Password (optional)</label>
+                <Input value={meetForm.jitsiPassword} onChange={(e) => setMeetForm((p) => ({ ...p, jitsiPassword: e.target.value }))} placeholder="Optional room password" className="mt-1" />
+              </div>
+              <Button size="sm" onClick={handleUpdateMeet} disabled={busy}><Globe className="w-3.5 h-3.5 mr-1" /> Update Config</Button>
+            </CardContent>
+          </Card>
+
+          {/* Finalist selection */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-mono">FINALIST TEAMS</CardTitle>
+              <CardDescription>Finalists can join the meet with camera, mic, and screen share</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {teams.map((team) => (
+                  <div key={team.id} className={`flex items-center justify-between px-3 py-2 rounded-lg ${team.isFinalist ? "bg-yellow-400/10 border border-yellow-400/20" : "bg-muted/30"}`}>
+                    <div className="flex items-center gap-2">
+                      {team.isFinalist && <Star className="w-3.5 h-3.5 text-yellow-400" />}
+                      <span className="text-sm font-medium">{team.name}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={team.isFinalist ? "default" : "outline"}
+                      className={`h-7 text-xs ${team.isFinalist ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""}`}
+                      onClick={() => handleToggleFinalist(team.id, team.isFinalist)}
+                    >
+                      {team.isFinalist ? "Finalist ✓" : "Set Finalist"}
+                    </Button>
+                  </div>
+                ))}
+                {!teams.length && <p className="text-muted-foreground text-sm text-center py-3">No teams found.</p>}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -919,6 +1198,187 @@ function EventTab() {
   );
 }
 
+// ─── Access Portal Tab ─────────────────────────────────────────────────────────
+interface AccessPortalData {
+  adminCodes: Array<{ id: number; code: string; label: string; isReusable: boolean }>;
+  judgeCodes: Array<{ id: number; code: string; label: string; isReusable: boolean }>;
+  participantCodes: Array<{ id: number; code: string; label: string | null; isUsed: boolean; teamId: number | null }>;
+  registrations: Array<{ id: number; fullName: string; email: string; teamName: string; paymentStatus: string; participantCode: string | null }>;
+  summary: { totalAdmin: number; totalJudges: number; totalParticipants: number; totalRegistrations: number; pendingRegistrations: number; approvedRegistrations: number };
+}
+
+function AccessPortalTab() {
+  const { data: portal, loading, refetch } = useAdminFetch<AccessPortalData>("/api/admin/access-portal");
+  const { toast } = useToast();
+
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `Copied: ${label}` });
+  };
+
+  const copyAll = (codes: string[]) => {
+    navigator.clipboard.writeText(codes.join("\n"));
+    toast({ title: `${codes.length} codes copied` });
+  };
+
+  if (loading) return <p className="text-center text-muted-foreground py-8">Loading access portal...</p>;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      {portal?.summary && (
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          {[
+            { label: "Admin", value: portal.summary.totalAdmin, color: "text-chart-4" },
+            { label: "Judges", value: portal.summary.totalJudges, color: "text-chart-2" },
+            { label: "Participants", value: portal.summary.totalParticipants, color: "text-primary" },
+            { label: "Registrations", value: portal.summary.totalRegistrations, color: "text-chart-1" },
+            { label: "Pending", value: portal.summary.pendingRegistrations, color: "text-amber-400" },
+            { label: "Approved", value: portal.summary.approvedRegistrations, color: "text-chart-3" },
+          ].map((s) => (
+            <div key={s.label} className="bg-muted/30 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">{s.label}</p>
+              <p className={`text-2xl font-bold font-mono ${s.color}`}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Admin Codes */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-chart-4" />
+              <CardTitle className="text-sm font-mono">ADMIN CODES</CardTitle>
+            </div>
+            {portal?.adminCodes.length && (
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyAll(portal.adminCodes.map((c) => c.code))}>
+                <Copy className="w-3 h-3" /> Copy All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          {portal?.adminCodes.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-chart-4/5 border border-chart-4/20">
+              <Shield className="w-3.5 h-3.5 text-chart-4 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+                <p className="font-mono text-sm text-chart-4 font-bold">{c.code}</p>
+              </div>
+              <Badge className="text-xs bg-chart-4/10 text-chart-4 border-chart-4/20">ADMIN</Badge>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copy(c.code, c.code)}><Copy className="w-3 h-3" /></Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Judge Codes */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Scale className="w-4 h-4 text-chart-2" />
+              <CardTitle className="text-sm font-mono">JUDGE CODES ({portal?.judgeCodes.length ?? 0})</CardTitle>
+            </div>
+            {portal?.judgeCodes.length ? (
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyAll(portal.judgeCodes.map((c) => c.code))}>
+                <Copy className="w-3 h-3" /> Copy All
+              </Button>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          {portal?.judgeCodes.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-chart-2/5 border border-chart-2/20">
+              <Scale className="w-3.5 h-3.5 text-chart-2 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+                <p className="font-mono text-sm text-chart-2 font-bold">{c.code}</p>
+              </div>
+              <Badge className="text-xs bg-chart-2/10 text-chart-2 border-chart-2/20">JUDGE</Badge>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copy(c.code, c.code)}><Copy className="w-3 h-3" /></Button>
+            </div>
+          ))}
+          {!portal?.judgeCodes.length && <p className="text-muted-foreground text-sm text-center py-3">No judge codes yet.</p>}
+        </CardContent>
+      </Card>
+
+      {/* Participant Codes */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-mono">PARTICIPANT CODES ({portal?.participantCodes.length ?? 0})</CardTitle>
+            </div>
+            {portal?.participantCodes.length ? (
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyAll(portal.participantCodes.map((c) => c.code))}>
+                <Copy className="w-3 h-3" /> Copy All
+              </Button>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {portal?.participantCodes.map((c) => (
+              <div key={c.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
+                <Key className="w-3 h-3 text-primary flex-shrink-0" />
+                <span className="font-mono text-xs text-primary flex-1 truncate">{c.code}</span>
+                {c.label && <span className="text-xs text-muted-foreground truncate max-w-[120px]">{c.label}</span>}
+                <Badge variant={c.isUsed ? "secondary" : "outline"} className={`text-xs flex-shrink-0 ${c.isUsed ? "text-chart-3" : ""}`}>{c.isUsed ? "USED" : "AVAIL"}</Badge>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0" onClick={() => copy(c.code, c.code)}><Copy className="w-2.5 h-2.5" /></Button>
+              </div>
+            ))}
+            {!portal?.participantCodes.length && <p className="text-muted-foreground text-sm text-center py-3">No participant codes yet.</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Registrations list */}
+      {(portal?.registrations.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-chart-1" />
+              <CardTitle className="text-sm font-mono">REGISTERED TEAMS ({portal?.registrations.length})</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+              {portal?.registrations.map((r) => (
+                <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30">
+                  <span className="text-xs font-mono text-muted-foreground w-6">#{r.id}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate">{r.teamName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.fullName} · {r.email}</p>
+                  </div>
+                  <Badge className={`text-xs flex-shrink-0 ${r.paymentStatus === "approved" ? "bg-chart-3/10 text-chart-3 border-chart-3/30" : r.paymentStatus === "rejected" ? "bg-destructive/10 text-destructive" : "bg-amber-400/10 text-amber-400 border-amber-400/30"}`}>
+                    {r.paymentStatus.toUpperCase()}
+                  </Badge>
+                  {r.participantCode && (
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-xs text-primary">{r.participantCode}</span>
+                      <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => copy(r.participantCode!, r.participantCode!)}><Copy className="w-2.5 h-2.5" /></Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm" onClick={refetch} className="gap-1 text-xs text-muted-foreground">
+          <RefreshCw className="w-3 h-3" /> Refresh
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Logs Tab ─────────────────────────────────────────────────────────────────
 function LogsTab() {
   const { data: logs } = useGetAdminLogs();
@@ -971,12 +1431,15 @@ export default function Admin() {
   const tabs = [
     { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { value: "hackathons", label: "Events", icon: Globe },
+    { value: "registrations", label: "Registrations", icon: ClipboardList },
     { value: "codes", label: "Codes", icon: Code2 },
     { value: "teams", label: "Teams", icon: Users },
     { value: "judges", label: "Judges", icon: Scale },
     { value: "scores", label: "Scores", icon: Trophy },
     { value: "polls", label: "Polls", icon: BarChart2 },
+    { value: "live", label: "Live", icon: Video },
     { value: "event", label: "Config", icon: Settings },
+    { value: "portal", label: "Access Portal", icon: Eye },
     { value: "logs", label: "Logs", icon: ScrollText },
   ] as const;
 
@@ -997,9 +1460,9 @@ export default function Admin() {
         </motion.div>
 
         <Tabs defaultValue="dashboard">
-          <TabsList className="grid grid-cols-5 md:grid-cols-9 h-auto gap-0.5 p-1">
+          <TabsList className="grid grid-cols-6 md:grid-cols-12 h-auto gap-0.5 p-1">
             {tabs.map(({ value, label, icon: Icon }) => (
-              <TabsTrigger key={value} value={value} className="flex-col gap-0.5 h-auto py-2 text-xs">
+              <TabsTrigger key={value} value={value} className="flex-col gap-0.5 h-auto py-2 text-[10px]">
                 <Icon className="w-3.5 h-3.5" />{label}
               </TabsTrigger>
             ))}
@@ -1007,12 +1470,15 @@ export default function Admin() {
           <div className="mt-6">
             <TabsContent value="dashboard"><DashboardTab /></TabsContent>
             <TabsContent value="hackathons"><HackathonsTab /></TabsContent>
+            <TabsContent value="registrations"><RegistrationsTab /></TabsContent>
             <TabsContent value="codes"><CodesTab /></TabsContent>
             <TabsContent value="teams"><TeamsTab /></TabsContent>
             <TabsContent value="judges"><JudgesTab /></TabsContent>
             <TabsContent value="scores"><ScoresTab /></TabsContent>
             <TabsContent value="polls"><PollsTab /></TabsContent>
+            <TabsContent value="live"><LiveTab /></TabsContent>
             <TabsContent value="event"><EventTab /></TabsContent>
+            <TabsContent value="portal"><AccessPortalTab /></TabsContent>
             <TabsContent value="logs"><LogsTab /></TabsContent>
           </div>
         </Tabs>

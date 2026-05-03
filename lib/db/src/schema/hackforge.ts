@@ -9,8 +9,8 @@ export const hackathonsTable = pgTable("hackathons", {
   slug: varchar("slug", { length: 100 }).notNull().unique(),
   description: text("description"),
   tagline: varchar("tagline", { length: 500 }),
-  status: varchar("status", { length: 20 }).notNull().default("upcoming"), // upcoming | active | completed
-  phase: varchar("phase", { length: 50 }).notNull().default("registration"), // registration | submission | elimination | finale
+  status: varchar("status", { length: 20 }).notNull().default("upcoming"),
+  phase: varchar("phase", { length: 50 }).notNull().default("registration"),
   streamUrl: text("stream_url"),
   streamActive: boolean("stream_active").notNull().default(false),
   resultsPublished: boolean("results_published").notNull().default(false),
@@ -18,6 +18,10 @@ export const hackathonsTable = pgTable("hackathons", {
   prizePool: varchar("prize_pool", { length: 100 }),
   grandPrize: varchar("grand_prize", { length: 100 }),
   submissionLocked: boolean("submission_locked").notNull().default(false),
+  // Live meet (Jitsi)
+  jitsiRoom: varchar("jitsi_room", { length: 255 }),
+  meetMode: varchar("meet_mode", { length: 20 }).notNull().default("youtube"), // youtube | jitsi | both
+  jitsiPassword: varchar("jitsi_password", { length: 100 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -30,12 +34,12 @@ export type Hackathon = typeof hackathonsTable.$inferSelect;
 export const participationCodesTable = pgTable("participation_codes", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 50 }).notNull().unique(),
-  role: varchar("role", { length: 20 }).notNull().default("participant"), // 'participant' | 'admin' | 'judge'
-  label: varchar("label", { length: 255 }), // display name for judges / admins
-  isReusable: boolean("is_reusable").notNull().default(false), // admin/judge codes are reusable
+  role: varchar("role", { length: 20 }).notNull().default("participant"),
+  label: varchar("label", { length: 255 }),
+  isReusable: boolean("is_reusable").notNull().default(false),
   isUsed: boolean("is_used").notNull().default(false),
   usedAt: timestamp("used_at"),
-  teamId: integer("team_id"), // nullable — participant bound to a team
+  teamId: integer("team_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -55,7 +59,7 @@ export const sessionsTable = pgTable("sessions", {
 
 export type Session = typeof sessionsTable.$inferSelect;
 
-// ─── Keep admins table for backward compat (not used for login anymore) ─────
+// ─── Keep admins table for backward compat ──────────────────────────────────
 export const adminsTable = pgTable("admins", {
   id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -68,11 +72,12 @@ export type Admin = typeof adminsTable.$inferSelect;
 // ─── Teams (scoped to a hackathon) ───────────────────────────────────────────
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
-  hackathonId: integer("hackathon_id"), // nullable for backward compat
+  hackathonId: integer("hackathon_id"),
   name: varchar("name", { length: 255 }).notNull(),
   projectTitle: varchar("project_title", { length: 500 }).notNull(),
   description: text("description"),
   githubUrl: text("github_url"),
+  isFinalist: boolean("is_finalist").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -95,10 +100,10 @@ export const submissionsTable = pgTable("submissions", {
 
 export type Submission = typeof submissionsTable.$inferSelect;
 
-// ─── Judge Scores (judgeId = participationCodesTable.id for role='judge') ────
+// ─── Judge Scores ─────────────────────────────────────────────────────────────
 export const judgeScoresTable = pgTable("judge_scores", {
   id: serial("id").primaryKey(),
-  judgeId: integer("judge_id").notNull(), // references participationCodesTable.id where role='judge'
+  judgeId: integer("judge_id").notNull(),
   teamId: integer("team_id").notNull(),
   score: real("score").notNull(),
   innovation: real("innovation"),
@@ -111,10 +116,30 @@ export const judgeScoresTable = pgTable("judge_scores", {
 
 export type JudgeScore = typeof judgeScoresTable.$inferSelect;
 
-// ─── Polls & Votes (scoped to a hackathon) ───────────────────────────────────
+// ─── Registrations ────────────────────────────────────────────────────────────
+export const registrationsTable = pgTable("registrations", {
+  id: serial("id").primaryKey(),
+  hackathonId: integer("hackathon_id"),
+  fullName: varchar("full_name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  teamName: varchar("team_name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  memberCount: integer("member_count").notNull().default(1),
+  paymentMode: varchar("payment_mode", { length: 20 }).notNull().default("offline"),
+  paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"),
+  notes: text("notes"),
+  participantCode: varchar("participant_code", { length: 50 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertRegistrationSchema = createInsertSchema(registrationsTable).omit({ id: true, createdAt: true });
+export type InsertRegistration = z.infer<typeof insertRegistrationSchema>;
+export type Registration = typeof registrationsTable.$inferSelect;
+
+// ─── Polls & Votes ────────────────────────────────────────────────────────────
 export const pollsTable = pgTable("polls", {
   id: serial("id").primaryKey(),
-  hackathonId: integer("hackathon_id"), // nullable for backward compat
+  hackathonId: integer("hackathon_id"),
   question: text("question").notNull(),
   isActive: boolean("is_active").notNull().default(false),
   isFrozen: boolean("is_frozen").notNull().default(false),
@@ -133,7 +158,7 @@ export const votesTable = pgTable("votes", {
 
 export type Vote = typeof votesTable.$inferSelect;
 
-// ─── Event Config (legacy — kept for OpenAPI compat, maps to active hackathon) ─
+// ─── Event Config (legacy — kept for OpenAPI compat) ─────────────────────────
 export const eventConfigTable = pgTable("event_config", {
   id: serial("id").primaryKey(),
   phase: varchar("phase", { length: 50 }).notNull().default("registration"),

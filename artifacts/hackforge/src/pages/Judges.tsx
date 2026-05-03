@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useGetEventStatus } from "@workspace/api-client-react";
 import { useAuthTokens } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Scale, Terminal, Star, ExternalLink,
   Github, Monitor, FileText, CheckCircle, Tv, Activity,
-  BarChart2, Users, LogOut
+  BarChart2, Users, LogOut, Video, ArrowRight, KeyRound
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
@@ -32,6 +33,12 @@ interface JudgeProfile {
 interface LeaderboardEntry {
   rank: number; teamId: number; teamName: string; projectTitle: string;
   averageScore: number | null; judgesScored: number; totalJudges: number;
+}
+
+interface ActiveHackathon {
+  id: number; jitsiRoom: string | null; meetMode: string;
+  jitsiPassword: string | null; streamUrl: string | null;
+  streamActive: boolean; phase: string;
 }
 
 // ─── Score Slider ─────────────────────────────────────────────────────────────
@@ -78,8 +85,6 @@ function TeamCard({ team, token, onScored }: { team: JudgeTeam; token: string; o
       toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
     } finally { setSaving(false); }
   };
-
-  const scoreColor = (s: number) => s >= 8 ? "text-chart-3" : s >= 5 ? "text-chart-1" : "text-chart-4";
 
   return (
     <Card className={`transition-all border ${hasScored ? "border-chart-3/30 bg-chart-3/5" : "border-border"}`}>
@@ -177,14 +182,123 @@ function JudgeLeaderboard({ token }: { token: string }) {
   );
 }
 
+// ─── Jitsi Meet for Judges (Host) ─────────────────────────────────────────────
+function JudgeMeet({ roomName, displayName }: { roomName: string; displayName: string }) {
+  const encoded = encodeURIComponent(displayName);
+  const config = [
+    `userInfo.displayName=${encoded}`,
+    "config.prejoinPageEnabled=false",
+    "config.startWithVideoMuted=false",
+    "config.startWithAudioMuted=false",
+  ].join("&");
+  const src = `https://meet.jit.si/${roomName}#${config}`;
+  return (
+    <div className="relative w-full rounded-lg overflow-hidden" style={{ paddingBottom: "56.25%" }}>
+      <iframe
+        className="absolute inset-0 w-full h-full"
+        src={src}
+        allow="camera; microphone; display-capture; fullscreen; autoplay"
+        allowFullScreen
+        title="HackForge Judge Meet"
+      />
+    </div>
+  );
+}
+
+// ─── Judge Login Form ─────────────────────────────────────────────────────────
+function JudgeLoginForm({ onLogin }: { onLogin: (token: string) => void }) {
+  const { setJudgeToken } = useAuthTokens();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = code.trim().toUpperCase();
+    if (!trimmed) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Invalid code");
+      if (data.role !== "judge") throw new Error("This code is not a judge code. Please use a HACKFORGE_JUDGE@XX code.");
+      setJudgeToken(data.token);
+      setAuthTokenGetter(() => localStorage.getItem(JUDGE_TOKEN_KEY));
+      toast({ title: "Judge Access Granted", description: `Welcome, ${data.label ?? "Judge"}!` });
+      onLogin(data.token);
+    } catch (err: unknown) {
+      toast({ title: "Access Denied", description: err instanceof Error ? err.message : "Invalid judge code.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background p-6">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm space-y-6">
+        <div className="text-center space-y-4">
+          <div className="flex justify-center">
+            <div className="bg-chart-2/10 p-4 rounded-full border border-chart-2/20">
+              <Scale className="w-10 h-10 text-chart-2" />
+            </div>
+          </div>
+          <div>
+            <h2 className="font-mono text-2xl font-bold">JUDGE PORTAL</h2>
+            <p className="text-muted-foreground mt-2 text-sm">Enter your judge access code to start scoring teams.</p>
+          </div>
+        </div>
+
+        <Card className="border-chart-2/20">
+          <CardContent className="pt-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2"><KeyRound className="w-4 h-4 text-chart-2" /> Judge Code</label>
+                <div className="relative">
+                  <Input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="HACKFORGE_JUDGE@01"
+                    className="font-mono text-sm pl-10 uppercase tracking-wider"
+                    autoFocus
+                    autoComplete="off"
+                  />
+                  <Terminal className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground font-mono">Format: HACKFORGE_JUDGE@XX</p>
+              </div>
+              <Button type="submit" className="w-full bg-chart-2 hover:bg-chart-2/90 gap-2" disabled={loading || !code.trim()}>
+                {loading ? <span className="flex items-center gap-2">Verifying<span className="animate-pulse">...</span></span> : <><ArrowRight className="w-4 h-4" /> Access Judge Portal</>}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground">
+            Wrong portal?{" "}
+            <button className="text-primary hover:underline" onClick={() => setLocation("/")}>Go to Home</button>
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Main Judges Portal ───────────────────────────────────────────────────────
 export default function Judges() {
   const [, setLocation] = useLocation();
-  const { getJudgeToken, judgeLogout } = useAuthTokens();
+  const { judgeLogout } = useAuthTokens();
   const [judgeToken, setJudgeTokenState] = useState(() => localStorage.getItem(JUDGE_TOKEN_KEY) ?? "");
   const [profile, setProfile] = useState<JudgeProfile | null>(null);
   const [teams, setTeams] = useState<JudgeTeam[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(false);
+  const [activeHackathon, setActiveHackathon] = useState<ActiveHackathon | null>(null);
+  const [joinedMeet, setJoinedMeet] = useState(false);
   const { data: eventStatus } = useGetEventStatus();
 
   const fetchTeams = async (token: string) => {
@@ -218,29 +332,22 @@ export default function Judges() {
     }
   }, [judgeToken]);
 
-  // Not authenticated → show redirect prompt
+  useEffect(() => {
+    fetch("/api/hackathons/active")
+      .then((r) => r.json())
+      .then((d) => { if (d.id) setActiveHackathon(d); })
+      .catch(() => {});
+  }, []);
+
+  const handleLogin = (token: string) => {
+    setJudgeTokenState(token);
+    fetchProfile(token);
+    fetchTeams(token);
+  };
+
+  // Not authenticated → show dedicated login form
   if (!judgeToken || !profile) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="bg-chart-2/10 p-4 rounded-full border border-chart-2/20">
-              <Scale className="w-10 h-10 text-chart-2" />
-            </div>
-          </div>
-          <div>
-            <h2 className="font-mono text-2xl font-bold">JUDGE PORTAL</h2>
-            <p className="text-muted-foreground mt-2 text-sm">Enter your judge code on the home page to access this portal.</p>
-          </div>
-          <div className="bg-muted/40 rounded-lg p-3 font-mono text-sm text-chart-2">
-            HACKFORGE_JUDGE@01
-          </div>
-          <Button className="w-full bg-chart-2 hover:bg-chart-2/90" onClick={() => setLocation("/")}>
-            Go to Home Page
-          </Button>
-        </motion.div>
-      </div>
-    );
+    return <JudgeLoginForm onLogin={handleLogin} />;
   }
 
   const handleLogout = () => {
@@ -253,6 +360,8 @@ export default function Judges() {
   };
 
   const scored = teams.filter((t) => t.judgeScore !== null).length;
+  const hasJitsiMeet = !!(activeHackathon?.jitsiRoom) && (activeHackathon?.meetMode === "jitsi" || activeHackathon?.meetMode === "both");
+  const isFinale = activeHackathon?.phase === "finale" || eventStatus?.phase === "finale";
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background py-8">
@@ -270,6 +379,11 @@ export default function Judges() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {hasJitsiMeet && isFinale && (
+              <Button size="sm" className="gap-1.5 bg-red-600 hover:bg-red-700" onClick={() => setJoinedMeet(true)}>
+                <Video className="w-3.5 h-3.5" /> Go Live
+              </Button>
+            )}
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">Progress</p>
               <p className="font-mono text-sm font-bold text-chart-2">{scored}/{teams.length} scored</p>
@@ -290,10 +404,32 @@ export default function Judges() {
           </div>
         )}
 
-        <Tabs defaultValue="teams">
+        {/* Go Live banner if meet is active */}
+        {hasJitsiMeet && isFinale && !joinedMeet && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+            <Card className="border-red-500/30 bg-red-500/5">
+              <CardContent className="py-3 px-4 flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">Finals Meet is Live!</p>
+                  <p className="text-xs text-muted-foreground">Room: {activeHackathon?.jitsiRoom}</p>
+                </div>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700 gap-1.5" onClick={() => setJoinedMeet(true)}>
+                  <Video className="w-3.5 h-3.5" /> Join Meet
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        <Tabs defaultValue={joinedMeet ? "stream" : "teams"}>
           <TabsList className="grid grid-cols-3">
             <TabsTrigger value="teams" className="gap-1.5"><Users className="w-3.5 h-3.5" /> Teams & Scoring</TabsTrigger>
-            <TabsTrigger value="stream" className="gap-1.5"><Tv className="w-3.5 h-3.5" /> Live Stream</TabsTrigger>
+            <TabsTrigger value="stream" className="gap-1.5">
+              <Tv className="w-3.5 h-3.5" />
+              {hasJitsiMeet && isFinale ? "Live Meet" : "Live Stream"}
+              {hasJitsiMeet && isFinale && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />}
+            </TabsTrigger>
             <TabsTrigger value="leaderboard" className="gap-1.5"><BarChart2 className="w-3.5 h-3.5" /> Leaderboard</TabsTrigger>
           </TabsList>
 
@@ -312,27 +448,68 @@ export default function Judges() {
           </TabsContent>
 
           <TabsContent value="stream" className="mt-4">
-            <Card className="overflow-hidden border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  Live Stream
-                  {eventStatus?.streamActive && <Badge className="bg-red-500/20 text-red-400 border-red-400/30 text-xs">LIVE</Badge>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {eventStatus?.streamUrl ? (
-                  <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
-                    <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${extractYouTubeId(eventStatus.streamUrl)}?autoplay=1`} title="HackForge Live Stream" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
-                    <Tv className="w-10 h-10 opacity-20" />
-                    <p className="font-mono text-sm">STREAM OFFLINE</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {hasJitsiMeet && isFinale ? (
+              /* Jitsi Host View for Judges */
+              <Card className="overflow-hidden border-red-500/30 bg-red-500/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    Finals Live Meet
+                    <Badge className="bg-red-500/20 text-red-400 border-red-400/30 text-xs">JUDGE HOST</Badge>
+                    <ExternalLink
+                      className="w-3.5 h-3.5 text-muted-foreground cursor-pointer ml-auto"
+                      onClick={() => window.open(`https://meet.jit.si/${activeHackathon!.jitsiRoom}`, "_blank")}
+                    />
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">You're joining as a judge — you have full host capabilities.</p>
+                </CardHeader>
+                <CardContent className="p-0 pb-3 px-3">
+                  {joinedMeet ? (
+                    <JudgeMeet
+                      roomName={activeHackathon!.jitsiRoom!}
+                      displayName={`Judge: ${profile.label}`}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10 gap-4">
+                      <div className="bg-red-500/10 p-4 rounded-full border border-red-500/20">
+                        <Video className="w-10 h-10 text-red-400" />
+                      </div>
+                      <div className="text-center">
+                        <p className="font-semibold">Finals Meet is Live</p>
+                        <p className="text-sm text-muted-foreground mt-1">Join as a judge host to watch presentations and participate.</p>
+                      </div>
+                      <Button className="gap-2 bg-red-600 hover:bg-red-700" onClick={() => setJoinedMeet(true)}>
+                        <Video className="w-4 h-4" /> Join as Judge
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              /* YouTube Stream Fallback */
+              <Card className="overflow-hidden border-primary/20">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    Live Stream
+                    {eventStatus?.streamActive && <Badge className="bg-red-500/20 text-red-400 border-red-400/30 text-xs">LIVE</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {eventStatus?.streamUrl ? (
+                    <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+                      <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${extractYouTubeId(eventStatus.streamUrl)}?autoplay=1`} title="HackForge Live Stream" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
+                      <Tv className="w-10 h-10 opacity-20" />
+                      <p className="font-mono text-sm">STREAM OFFLINE</p>
+                      <p className="text-xs text-muted-foreground text-center">Admin will launch the meet when the finale begins.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="leaderboard" className="mt-4">

@@ -35,6 +35,9 @@ function formatHackathon(h: typeof hackathonsTable.$inferSelect) {
     prizePool: h.prizePool ?? null,
     grandPrize: h.grandPrize ?? null,
     submissionLocked: h.submissionLocked,
+    jitsiRoom: (h as typeof h & { jitsiRoom?: string | null }).jitsiRoom ?? null,
+    meetMode: (h as typeof h & { meetMode?: string }).meetMode ?? "youtube",
+    jitsiPassword: (h as typeof h & { jitsiPassword?: string | null }).jitsiPassword ?? null,
     createdAt: h.createdAt.toISOString(),
     updatedAt: h.updatedAt.toISOString(),
   };
@@ -170,9 +173,9 @@ router.put("/hackathons/:id", async (req: Request, res: Response) => {
   }
 
   const { name, description, tagline, status, phase, streamUrl, streamActive, resultsPublished,
-    judgeResultsVisible, prizePool, grandPrize, submissionLocked } = req.body ?? {};
+    judgeResultsVisible, prizePool, grandPrize, submissionLocked, jitsiRoom, meetMode, jitsiPassword } = req.body ?? {};
 
-  const updateData: Partial<typeof hackathonsTable.$inferInsert> = { updatedAt: new Date() };
+  const updateData: Partial<typeof hackathonsTable.$inferInsert> & { jitsiRoom?: string | null; meetMode?: string; jitsiPassword?: string | null } = { updatedAt: new Date() };
   if (name !== undefined) updateData.name = name;
   if (description !== undefined) updateData.description = description;
   if (tagline !== undefined) updateData.tagline = tagline;
@@ -185,6 +188,9 @@ router.put("/hackathons/:id", async (req: Request, res: Response) => {
   if (prizePool !== undefined) updateData.prizePool = prizePool;
   if (grandPrize !== undefined) updateData.grandPrize = grandPrize;
   if (submissionLocked !== undefined) updateData.submissionLocked = submissionLocked;
+  if (jitsiRoom !== undefined) updateData.jitsiRoom = jitsiRoom;
+  if (meetMode !== undefined) updateData.meetMode = meetMode;
+  if (jitsiPassword !== undefined) updateData.jitsiPassword = jitsiPassword;
 
   const [updated] = await db.update(hackathonsTable).set(updateData).where(eq(hackathonsTable.id, id)).returning();
   if (!updated) {

@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from "framer-motion";
-import { Terminal, Users, Trophy, Target, ArrowRight, Activity, CheckCircle2, Clock, Zap } from "lucide-react";
+import { Terminal, Users, Trophy, Target, ArrowRight, Activity, CheckCircle2, Clock, Zap, UserPlus, KeyRound } from "lucide-react";
 
 interface Hackathon {
   id: number; name: string; slug: string; description: string | null;
@@ -17,12 +18,6 @@ interface Hackathon {
   grandPrize: string | null; totalTeams: number; winner: { teamName: string; projectTitle: string; voteCount: number } | null;
   resultsPublished: boolean;
 }
-
-const statusConfig: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-  upcoming: { label: "UPCOMING", color: "text-chart-1 border-chart-1/30 bg-chart-1/10", icon: Clock },
-  active: { label: "LIVE NOW", color: "text-chart-3 border-chart-3/30 bg-chart-3/10", icon: Zap },
-  completed: { label: "COMPLETED", color: "text-muted-foreground border-border bg-muted/20", icon: CheckCircle2 },
-};
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -141,7 +136,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Upcoming */}
             {upcomingHackathons.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Upcoming</h3>
@@ -161,7 +155,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Past hackathons */}
             {pastHackathons.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Past Events</h3>
@@ -192,52 +185,130 @@ export default function Home() {
             )}
           </motion.div>
 
-          {/* Right: Login + Phase tracker */}
+          {/* Right: Login / Register tabs + Phase tracker */}
           <motion.div className="w-full max-w-md mx-auto lg:ml-auto" variants={itemVariants}>
             <Card className="border-primary/20 bg-card/50 backdrop-blur shadow-2xl shadow-primary/5">
-              <CardHeader className="text-center pb-4">
-                <CardTitle className="text-2xl font-mono">INITIALIZE_LINK</CardTitle>
-                <CardDescription>Enter your access code to continue</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2 relative">
-                    <Input
-                      placeholder="HACKFORGE_PART_... / ADMIN / JUDGE"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.toUpperCase())}
-                      className="font-mono text-center text-base h-14 bg-background/50 border-primary/30 focus-visible:ring-primary uppercase tracking-widest pl-12"
-                      autoComplete="off"
-                      autoFocus
-                    />
-                    <Terminal className="absolute left-4 top-4 w-6 h-6 text-muted-foreground" />
-                  </div>
-                  <Button type="submit" className="w-full h-12 font-bold tracking-wide" size="lg" disabled={loading || !code.trim()}>
-                    {loading
-                      ? <span className="flex items-center gap-2">CONNECTING <span className="animate-pulse">...</span></span>
-                      : <span className="flex items-center gap-2">AUTHENTICATE <ArrowRight className="w-4 h-4" /></span>
-                    }
-                  </Button>
-                </form>
+              <Tabs defaultValue="login">
+                <CardHeader className="pb-0">
+                  <TabsList className="grid grid-cols-2 w-full">
+                    <TabsTrigger value="login" className="gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5" /> Login
+                    </TabsTrigger>
+                    <TabsTrigger value="register" className="gap-1.5">
+                      <UserPlus className="w-3.5 h-3.5" /> Register
+                    </TabsTrigger>
+                  </TabsList>
+                </CardHeader>
 
-                <div className="mt-6 space-y-2">
-                  <p className="text-xs text-muted-foreground text-center font-mono uppercase tracking-wider mb-3">Code Format Guide</p>
-                  <div className="grid grid-cols-1 gap-1.5 text-xs font-mono">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
-                      <span className="text-muted-foreground w-20">Participant</span>
-                      <span className="text-primary/80">HACKFORGE_PART_XXXXXXXX</span>
+                {/* Login Tab */}
+                <TabsContent value="login">
+                  <CardHeader className="text-center pb-4 pt-4">
+                    <CardTitle className="text-2xl font-mono">INITIALIZE_LINK</CardTitle>
+                    <CardDescription>Enter your access code to continue</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleLogin} className="space-y-4">
+                      <div className="space-y-2 relative">
+                        <Input
+                          placeholder="HACKFORGE_PART_... / ADMIN / JUDGE"
+                          value={code}
+                          onChange={(e) => setCode(e.target.value.toUpperCase())}
+                          className="font-mono text-center text-sm h-14 bg-background/50 border-primary/30 focus-visible:ring-primary uppercase tracking-widest pl-12"
+                          autoComplete="off"
+                          autoFocus
+                        />
+                        <Terminal className="absolute left-4 top-4 w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <Button type="submit" className="w-full h-12 font-bold tracking-wide" size="lg" disabled={loading || !code.trim()}>
+                        {loading
+                          ? <span className="flex items-center gap-2">CONNECTING <span className="animate-pulse">...</span></span>
+                          : <span className="flex items-center gap-2">AUTHENTICATE <ArrowRight className="w-4 h-4" /></span>
+                        }
+                      </Button>
+                    </form>
+
+                    <div className="mt-5 space-y-2">
+                      <p className="text-xs text-muted-foreground text-center font-mono uppercase tracking-wider mb-3">Code Format Guide</p>
+                      <div className="grid grid-cols-1 gap-1.5 text-xs font-mono">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
+                          <span className="text-muted-foreground w-20">Participant</span>
+                          <span className="text-primary/80">HACKFORGE_PART_XXXXXXXX</span>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
+                          <span className="text-muted-foreground w-20">Judge</span>
+                          <span className="text-chart-2/80">HACKFORGE_JUDGE@01</span>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
+                          <span className="text-muted-foreground w-20">Admin</span>
+                          <span className="text-chart-4/80">HACKFORGE_ADMIN@01</span>
+                        </div>
+                      </div>
+                      <p className="text-center text-xs text-muted-foreground pt-1">
+                        No code yet?{" "}
+                        <button className="text-primary hover:underline font-medium" onClick={() => {}}>Switch to Register tab</button>
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
-                      <span className="text-muted-foreground w-20">Judge</span>
-                      <span className="text-chart-2/80">HACKFORGE_JUDGE@01</span>
+                  </CardContent>
+                </TabsContent>
+
+                {/* Register Tab */}
+                <TabsContent value="register">
+                  <CardHeader className="text-center pb-4 pt-4">
+                    <CardTitle className="text-2xl font-mono">JOIN_HACKATHON</CardTitle>
+                    <CardDescription>Register your team to participate</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-primary text-xs font-bold">1</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Fill Registration Form</p>
+                          <p className="text-xs text-muted-foreground">Name, team info, payment preference</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-primary text-xs font-bold">2</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Payment Verification</p>
+                          <p className="text-xs text-muted-foreground">Admin verifies payment (offline / UPI)</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-primary text-xs font-bold">3</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Get Your Access Code</p>
+                          <p className="text-xs text-muted-foreground">Receive <span className="font-mono text-primary text-[11px]">HACKFORGE_PART_XXXXXXXX</span> via email</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40">
-                      <span className="text-muted-foreground w-20">Admin</span>
-                      <span className="text-chart-4/80">HACKFORGE_ADMIN@01</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
+
+                    {activeHackathon && (
+                      <div className="p-3 rounded-lg border border-chart-3/20 bg-chart-3/5">
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-chart-3" />
+                          <p className="text-sm font-semibold text-chart-3">{activeHackathon.name} is LIVE</p>
+                        </div>
+                        {activeHackathon.prizePool && <p className="text-xs text-muted-foreground mt-1">Prize Pool: {activeHackathon.prizePool}</p>}
+                      </div>
+                    )}
+
+                    <Button className="w-full h-12 font-bold gap-2" onClick={() => setLocation("/register")}>
+                      <UserPlus className="w-4 h-4" /> Register Now
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                    <p className="text-center text-xs text-muted-foreground">
+                      Already registered?{" "}
+                      <button className="text-primary hover:underline font-medium" onClick={() => { const el = document.querySelector('[data-value="login"]') as HTMLElement; el?.click(); }}>Login with your code</button>
+                    </p>
+                  </CardContent>
+                </TabsContent>
+              </Tabs>
             </Card>
 
             {/* Phase tracker */}
@@ -251,7 +322,7 @@ export default function Home() {
                     <div key={phase} className="flex items-center gap-0">
                       <div className="flex flex-col items-center gap-2">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all ${isActive ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.5)]" : "bg-muted text-muted-foreground"}`}>
-                          {i + 1}
+                          {isActive ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
                         </div>
                         <span className="text-xs font-mono">{phase.slice(0, 3).toUpperCase()}</span>
                       </div>
