@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,6 +11,7 @@ import Results from "@/pages/Results";
 import Admin from "@/pages/Admin";
 import Judges from "@/pages/Judges";
 import Register from "@/pages/Register";
+import { WaveLoader } from "@/components/WaveLoader";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,11 +43,18 @@ function Router() {
 }
 
 function App() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLoading(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}> 
+          {loading ? <WaveLoader /> : <Router />}
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
