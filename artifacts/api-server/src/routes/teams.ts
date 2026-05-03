@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, teamsTable, votesTable, pollsTable, adminLogsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, teamsTable, votesTable, pollsTable, adminLogsTable, hackathonsTable, participationCodesTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import { CreateTeamBody } from "@workspace/api-zod";
 import { extractToken, getSessionFromToken } from "../lib/auth";
 
@@ -20,52 +20,55 @@ async function logAction(action: string, details?: string) {
   await db.insert(adminLogsTable).values({ action, details: details ?? null });
 }
 
-function formatTeam(team: typeof teamsTable.$inferSelect) {
+async function getActiveHackathonId(): Promise<number | null> {
+  const [h] = await db.select({ id: hackathonsTable.id }).from(hackathonsTable).where(eq(hackathonsTable.status, "active")).orderBy(desc(hackathonsTable.id));
+  return h?.id ?? null;
+}
+
+function formatTeam(team: typeof teamsTable.$inferSelect, members?: Array<{ id: number; code: string; label: string | null }>) {
   return {
     id: team.id,
+    hackathonId: team.hackathonId ?? null,
     name: team.name,
     projectTitle: team.projectTitle,
     description: team.description ?? null,
     githubUrl: team.githubUrl ?? null,
     createdAt: team.createdAt.toISOString(),
+    members: members ?? [],
   };
 }
 
-router.get("/teams", async (_req: Request, res: Response) => {
-  const teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
-  res.json(teams.map(formatTeam));
-});
+// List all teams — filtered by hackathonId query param, or active hackathon if ?active=true, or all if no filter
+router.get("/teams", async (req: Request, res: Response) => {
+  let hackathonId: number | null = null;
 
-router.get("/teams/with-dummy-auth", async (req: Request, res: Response) => {
-  const token = extractToken(req.headers.authorization);
-  const session = await getSessionFromToken(token);
-  if (!session) {
-    res.status(401).json({ error: "unauthorized", message: "Team access required" });
-    return;
+  if (req.query.hackathonId) {
+    hackathonId = parseInt(String(req.query.hackathonId), 10);
+  } else if (req.query.active === "true") {
+    hackathonId = await getActiveHackathonId();
   }
 
-  const teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
-  const [activePoll] = await db.select().from(pollsTable).where(eq(pollsTable.isActive, true));
-  const votes = activePoll ? await db.select().from(votesTable).where(eq(votesTable.pollId, activePoll.id)) : [];
-  const totalVotes = votes.length;
-  const voteCounts = new Map<number, number>();
-  for (const vote of votes) voteCounts.set(vote.teamId, (voteCounts.get(vote.teamId) ?? 0) + 1);
+  let teams;
+  if (hackathonId !== null) {
+    teams = await db.select().from(teamsTable).where(eq(teamsTable.hackathonId, hackathonId)).orderBy(teamsTable.createdAt);
+  } else {
+    teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
+  }
 
-  res.json({
-    auth: {
-      token: session.token,
-      role: session.isAdmin ? "admin" : session.isJudge ? "judge" : "participant",
-      codeId: session.codeId,
-      note: "Dummy team auth: uses existing code-based session and projects team access state",
-    },
-    teams: teams.map((team) => ({
-      ...formatTeam(team),
-      voteCount: voteCounts.get(team.id) ?? 0,
-      percentage: totalVotes > 0 ? Math.round(((voteCounts.get(team.id) ?? 0) / totalVotes) * 1000) / 10 : 0,
-    })),
-  });
+  // Get member codes linked to each team
+  const allCodes = await db.select().from(participationCodesTable).where(eq(participationCodesTable.role, "participant"));
+  const membersByTeam = new Map<number, Array<{ id: number; code: string; label: string | null }>>();
+  for (const code of allCodes) {
+    if (code.teamId !== null && code.teamId !== undefined) {
+      if (!membersByTeam.has(code.teamId)) membersByTeam.set(code.teamId, []);
+      membersByTeam.get(code.teamId)!.push({ id: code.id, code: code.code, label: code.label });
+    }
+  }
+
+  res.json(teams.map((t) => formatTeam(t, membersByTeam.get(t.id) ?? [])));
 });
 
+// Create team (admin only)
 router.post("/teams", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
@@ -75,11 +78,16 @@ router.post("/teams", async (req: Request, res: Response) => {
     return;
   }
 
-  const [team] = await db.insert(teamsTable).values(parse.data).returning();
-  await logAction("create_team", `Created team ${team.name}`);
-  res.status(201).json(formatTeam(team));
+  // Auto-assign to active hackathon if hackathonId not provided
+  let hackathonId = typeof req.body.hackathonId === "number" ? req.body.hackathonId : null;
+  if (!hackathonId) hackathonId = await getActiveHackathonId();
+
+  const [team] = await db.insert(teamsTable).values({ ...parse.data, hackathonId }).returning();
+  await logAction("create_team", `Created team ${team.name} for hackathon ${hackathonId}`);
+  res.status(201).json(formatTeam(team, []));
 });
 
+// Update team (admin only)
 router.put("/teams/:id", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
@@ -102,9 +110,10 @@ router.put("/teams/:id", async (req: Request, res: Response) => {
   }
 
   await logAction("update_team", `Updated team ${team.name}`);
-  res.json(formatTeam(team));
+  res.json(formatTeam(team, []));
 });
 
+// Delete team (admin only)
 router.delete("/teams/:id", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
@@ -113,6 +122,9 @@ router.delete("/teams/:id", async (req: Request, res: Response) => {
     res.status(400).json({ error: "invalid_id", message: "Invalid team ID" });
     return;
   }
+
+  // Unlink participant codes from this team
+  await db.update(participationCodesTable).set({ teamId: null }).where(eq(participationCodesTable.teamId, id));
 
   const [deleted] = await db.delete(teamsTable).where(eq(teamsTable.id, id)).returning();
   if (!deleted) {
@@ -124,8 +136,63 @@ router.delete("/teams/:id", async (req: Request, res: Response) => {
   res.json({ success: true, message: "Team deleted" });
 });
 
+// Admin: assign participant code to a team
+router.post("/teams/:id/assign-code", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const teamId = parseInt(String(req.params.id), 10);
+  const { code } = req.body ?? {};
+  if (!code) {
+    res.status(400).json({ error: "validation_error", message: "code is required" });
+    return;
+  }
+
+  const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId));
+  if (!team) {
+    res.status(404).json({ error: "not_found", message: "Team not found" });
+    return;
+  }
+
+  const [found] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.code, String(code).toUpperCase()));
+  if (!found || found.role !== "participant") {
+    res.status(404).json({ error: "not_found", message: "Participant code not found" });
+    return;
+  }
+
+  const [updated] = await db.update(participationCodesTable).set({ teamId }).where(eq(participationCodesTable.id, found.id)).returning();
+  await logAction("assign_code_to_team", `Code ${found.code} → team ${team.name}`);
+  res.json({ success: true, code: updated.code, teamId, teamName: team.name });
+});
+
+// Admin: unassign participant code from team
+router.post("/teams/unassign-code", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const { code } = req.body ?? {};
+  if (!code) {
+    res.status(400).json({ error: "validation_error", message: "code is required" });
+    return;
+  }
+
+  const [updated] = await db.update(participationCodesTable).set({ teamId: null }).where(eq(participationCodesTable.code, String(code).toUpperCase())).returning();
+  if (!updated) {
+    res.status(404).json({ error: "not_found", message: "Code not found" });
+    return;
+  }
+
+  await logAction("unassign_code", `Unassigned code ${updated.code} from team`);
+  res.json({ success: true });
+});
+
+// Leaderboard
 router.get("/teams/leaderboard", async (_req: Request, res: Response) => {
-  const teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
+  const hackathonId = await getActiveHackathonId();
+  let teams;
+  if (hackathonId) {
+    teams = await db.select().from(teamsTable).where(eq(teamsTable.hackathonId, hackathonId)).orderBy(teamsTable.createdAt);
+  } else {
+    teams = await db.select().from(teamsTable).orderBy(teamsTable.createdAt);
+  }
 
   const [activePoll] = await db.select().from(pollsTable).where(eq(pollsTable.isActive, true));
   if (!activePoll && !teams.length) {

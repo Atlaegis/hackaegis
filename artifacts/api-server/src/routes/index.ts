@@ -10,12 +10,14 @@ import eventRouter from "./event";
 import adminRouter from "./admin";
 import judgesRouter from "./judges";
 import submissionsRouter from "./submissions";
+import hackathonsRouter from "./hackathons";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
 router.use(codesRouter);
+router.use(hackathonsRouter);
 router.use(teamsRouter);
 router.use(pollsRouter);
 router.use(votesRouter);

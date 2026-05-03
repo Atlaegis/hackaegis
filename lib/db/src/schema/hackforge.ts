@@ -2,6 +2,30 @@ import { pgTable, text, serial, boolean, timestamp, integer, varchar, real } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+// ─── Hackathons (multi-event support) ────────────────────────────────────────
+export const hackathonsTable = pgTable("hackathons", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(),
+  description: text("description"),
+  tagline: varchar("tagline", { length: 500 }),
+  status: varchar("status", { length: 20 }).notNull().default("upcoming"), // upcoming | active | completed
+  phase: varchar("phase", { length: 50 }).notNull().default("registration"), // registration | submission | elimination | finale
+  streamUrl: text("stream_url"),
+  streamActive: boolean("stream_active").notNull().default(false),
+  resultsPublished: boolean("results_published").notNull().default(false),
+  judgeResultsVisible: boolean("judge_results_visible").notNull().default(false),
+  prizePool: varchar("prize_pool", { length: 100 }),
+  grandPrize: varchar("grand_prize", { length: 100 }),
+  submissionLocked: boolean("submission_locked").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertHackathonSchema = createInsertSchema(hackathonsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertHackathon = z.infer<typeof insertHackathonSchema>;
+export type Hackathon = typeof hackathonsTable.$inferSelect;
+
 // ─── Unified access codes (participants, admins, judges) ────────────────────
 export const participationCodesTable = pgTable("participation_codes", {
   id: serial("id").primaryKey(),
@@ -11,6 +35,7 @@ export const participationCodesTable = pgTable("participation_codes", {
   isReusable: boolean("is_reusable").notNull().default(false), // admin/judge codes are reusable
   isUsed: boolean("is_used").notNull().default(false),
   usedAt: timestamp("used_at"),
+  teamId: integer("team_id"), // nullable — participant bound to a team
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -40,9 +65,10 @@ export const adminsTable = pgTable("admins", {
 
 export type Admin = typeof adminsTable.$inferSelect;
 
-// ─── Teams ───────────────────────────────────────────────────────────────────
+// ─── Teams (scoped to a hackathon) ───────────────────────────────────────────
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
+  hackathonId: integer("hackathon_id"), // nullable for backward compat
   name: varchar("name", { length: 255 }).notNull(),
   projectTitle: varchar("project_title", { length: 500 }).notNull(),
   description: text("description"),
@@ -85,9 +111,10 @@ export const judgeScoresTable = pgTable("judge_scores", {
 
 export type JudgeScore = typeof judgeScoresTable.$inferSelect;
 
-// ─── Polls & Votes ───────────────────────────────────────────────────────────
+// ─── Polls & Votes (scoped to a hackathon) ───────────────────────────────────
 export const pollsTable = pgTable("polls", {
   id: serial("id").primaryKey(),
+  hackathonId: integer("hackathon_id"), // nullable for backward compat
   question: text("question").notNull(),
   isActive: boolean("is_active").notNull().default(false),
   isFrozen: boolean("is_frozen").notNull().default(false),
@@ -106,7 +133,7 @@ export const votesTable = pgTable("votes", {
 
 export type Vote = typeof votesTable.$inferSelect;
 
-// ─── Event Config ─────────────────────────────────────────────────────────────
+// ─── Event Config (legacy — kept for OpenAPI compat, maps to active hackathon) ─
 export const eventConfigTable = pgTable("event_config", {
   id: serial("id").primaryKey(),
   phase: varchar("phase", { length: 50 }).notNull().default("registration"),

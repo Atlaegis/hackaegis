@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, submissionsTable, teamsTable, sessionsTable, adminLogsTable } from "@workspace/db";
+import { db, submissionsTable, teamsTable, sessionsTable, adminLogsTable, hackathonsTable, participationCodesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { extractToken, getSessionFromToken } from "../lib/auth";
 
@@ -29,6 +29,16 @@ async function requireAdmin(req: Request, res: Response): Promise<boolean> {
   return true;
 }
 
+// Check if submissions are locked for a hackathon
+async function isSubmissionLocked(hackathonId: number | null): Promise<boolean> {
+  if (!hackathonId) return false;
+  const [h] = await db.select({ submissionLocked: hackathonsTable.submissionLocked, phase: hackathonsTable.phase })
+    .from(hackathonsTable).where(eq(hackathonsTable.id, hackathonId));
+  if (!h) return false;
+  // Locked if explicitly set OR if phase is past submission
+  return h.submissionLocked || h.phase === "elimination" || h.phase === "finale";
+}
+
 // List all submissions (admin + judges)
 router.get("/submissions", async (req: Request, res: Response) => {
   const session = await requireAdminOrJudge(req, res);
@@ -36,12 +46,13 @@ router.get("/submissions", async (req: Request, res: Response) => {
 
   const submissions = await db.select().from(submissionsTable).orderBy(desc(submissionsTable.submittedAt));
   const teams = await db.select().from(teamsTable);
-  const teamMap = new Map(teams.map(t => [t.id, t]));
+  const teamMap = new Map(teams.map((t) => [t.id, t]));
 
-  res.json(submissions.map(s => ({
+  res.json(submissions.map((s) => ({
     id: s.id,
     teamId: s.teamId,
     teamName: teamMap.get(s.teamId)?.name ?? "Unknown",
+    hackathonId: teamMap.get(s.teamId)?.hackathonId ?? null,
     projectTitle: s.projectTitle ?? teamMap.get(s.teamId)?.projectTitle ?? null,
     description: s.description,
     githubUrl: s.githubUrl,
@@ -54,8 +65,12 @@ router.get("/submissions", async (req: Request, res: Response) => {
 
 // Get submission for a specific team
 router.get("/submissions/:teamId", async (req: Request, res: Response) => {
-  const session = await requireAdminOrJudge(req, res);
-  if (!session) return;
+  const token = extractToken(req.headers.authorization);
+  const session = await getSessionFromToken(token);
+  if (!session) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
 
   const teamId = parseInt(String(req.params.teamId), 10);
   const [submission] = await db.select().from(submissionsTable).where(eq(submissionsTable.teamId, teamId));
@@ -66,6 +81,17 @@ router.get("/submissions/:teamId", async (req: Request, res: Response) => {
     return;
   }
 
+  // Participants can only see their own team's submission
+  if (!session.isAdmin && !session.isJudge) {
+    const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
+    if (code?.teamId !== teamId) {
+      res.status(403).json({ error: "forbidden", message: "Access denied" });
+      return;
+    }
+  }
+
+  const locked = await isSubmissionLocked(team.hackathonId ?? null);
+
   if (!submission) {
     res.json({
       id: null, teamId, teamName: team.name,
@@ -74,6 +100,7 @@ router.get("/submissions/:teamId", async (req: Request, res: Response) => {
       githubUrl: team.githubUrl ?? null,
       demoUrl: null, slidesUrl: null,
       submittedAt: null, updatedAt: null,
+      isLocked: locked,
     });
     return;
   }
@@ -89,13 +116,18 @@ router.get("/submissions/:teamId", async (req: Request, res: Response) => {
     slidesUrl: submission.slidesUrl,
     submittedAt: submission.submittedAt.toISOString(),
     updatedAt: submission.updatedAt.toISOString(),
+    isLocked: locked,
   });
 });
 
-// Create or update submission (admin or judge)
+// Create or update submission — admin/judge OR team member participant
 router.post("/submissions", async (req: Request, res: Response) => {
-  const session = await requireAdminOrJudge(req, res);
-  if (!session) return;
+  const token = extractToken(req.headers.authorization);
+  const session = await getSessionFromToken(token);
+  if (!session) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
 
   const { teamId, projectTitle, description, githubUrl, demoUrl, slidesUrl } = req.body ?? {};
   if (typeof teamId !== "number") {
@@ -107,6 +139,22 @@ router.post("/submissions", async (req: Request, res: Response) => {
   if (!team) {
     res.status(404).json({ error: "not_found", message: "Team not found" });
     return;
+  }
+
+  // Participants can only submit for their own team
+  if (!session.isAdmin && !session.isJudge) {
+    const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
+    if (code?.teamId !== teamId) {
+      res.status(403).json({ error: "forbidden", message: "You can only submit for your own team." });
+      return;
+    }
+
+    // Check if submission is locked
+    const locked = await isSubmissionLocked(team.hackathonId ?? null);
+    if (locked) {
+      res.status(423).json({ error: "locked", message: "Submissions are locked for this hackathon phase." });
+      return;
+    }
   }
 
   const [existing] = await db.select().from(submissionsTable).where(eq(submissionsTable.teamId, teamId));
@@ -127,7 +175,7 @@ router.post("/submissions", async (req: Request, res: Response) => {
     [saved] = await db.insert(submissionsTable).values({ teamId, ...values, submittedAt: now }).returning();
   }
 
-  await logAction("upsert_submission", `Submission for team ${team.name}`);
+  await logAction("upsert_submission", `Submission for team ${team.name} by session ${session.id}`);
   res.status(existing ? 200 : 201).json({
     id: saved.id,
     teamId: saved.teamId,
@@ -139,6 +187,7 @@ router.post("/submissions", async (req: Request, res: Response) => {
     slidesUrl: saved.slidesUrl,
     submittedAt: saved.submittedAt.toISOString(),
     updatedAt: saved.updatedAt.toISOString(),
+    isLocked: false,
   });
 });
 

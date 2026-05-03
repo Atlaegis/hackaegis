@@ -28,6 +28,7 @@ function Router() {
           <Route path="/" component={Home} />
           <Route path="/watch" component={Watch} />
           <Route path="/results" component={Results} />
+          <Route path="/results/:slug" component={Results} />
           <Route path="/admin" component={Admin} />
           <Route path="/judges" component={Judges} />
           <Route component={NotFound} />

@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, participationCodesTable, sessionsTable } from "@workspace/db";
+import { db, participationCodesTable, sessionsTable, teamsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   VerifyParticipationCodeBody,
@@ -9,7 +9,7 @@ import { generateToken, extractToken, getSessionFromToken } from "../lib/auth";
 
 const router: IRouter = Router();
 
-// ─── Unified Code Login (NEW primary endpoint) ───────────────────────────────
+// ─── Unified Code Login ───────────────────────────────────────────────────────
 router.post("/auth/login", async (req: Request, res: Response) => {
   const rawCode = (req.body?.code ?? "").toString().trim().toUpperCase();
   if (!rawCode) {
@@ -51,6 +51,13 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     isJudge,
   });
 
+  // Load team info if participant is linked to a team
+  let team: { id: number; name: string; hackathonId: number | null } | null = null;
+  if (!isAdmin && !isJudge && found.teamId) {
+    const [t] = await db.select().from(teamsTable).where(eq(teamsTable.id, found.teamId));
+    if (t) team = { id: t.id, name: t.name, hackathonId: t.hackathonId ?? null };
+  }
+
   const redirectTo = isAdmin ? "/admin" : isJudge ? "/judges" : "/watch";
 
   res.json({
@@ -58,6 +65,7 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     role: found.role,
     label: found.label ?? null,
     redirectTo,
+    team,
   });
 });
 
@@ -104,7 +112,6 @@ router.post("/auth/admin/login", async (req: Request, res: Response) => {
     return;
   }
 
-  // Check if there's an admin code in participationCodesTable
   const [adminCode] = await db
     .select()
     .from(participationCodesTable)
@@ -136,16 +143,57 @@ router.get("/auth/me", async (req: Request, res: Response) => {
     .where(eq(participationCodesTable.id, session.codeId));
 
   if (session.isAdmin) {
-    res.json({ isAdmin: true, isJudge: false, role: "admin", label: code?.label ?? "Admin", participantCode: null, hasVoted: null });
+    res.json({ isAdmin: true, isJudge: false, role: "admin", label: code?.label ?? "Admin", participantCode: null, hasVoted: null, team: null });
     return;
   }
 
   if (session.isJudge) {
-    res.json({ isAdmin: false, isJudge: true, role: "judge", label: code?.label ?? code?.code ?? "Judge", judgeCodeId: session.codeId, participantCode: null, hasVoted: null });
+    res.json({ isAdmin: false, isJudge: true, role: "judge", label: code?.label ?? code?.code ?? "Judge", judgeCodeId: session.codeId, participantCode: null, hasVoted: null, team: null });
     return;
   }
 
-  res.json({ isAdmin: false, isJudge: false, role: "participant", label: null, participantCode: code?.code ?? null, hasVoted: false });
+  // Load team if linked
+  let team: { id: number; name: string; hackathonId: number | null } | null = null;
+  if (code?.teamId) {
+    const [t] = await db.select().from(teamsTable).where(eq(teamsTable.id, code.teamId));
+    if (t) team = { id: t.id, name: t.name, hackathonId: t.hackathonId ?? null };
+  }
+
+  res.json({ isAdmin: false, isJudge: false, role: "participant", label: null, participantCode: code?.code ?? null, hasVoted: false, team });
+});
+
+// ─── My team (participant) ─────────────────────────────────────────────────────
+router.get("/auth/my-team", async (req: Request, res: Response) => {
+  const token = extractToken(req.headers.authorization);
+  const session = await getSessionFromToken(token);
+
+  if (!session || session.isAdmin || session.isJudge) {
+    res.status(401).json({ error: "unauthorized", message: "Participant access required" });
+    return;
+  }
+
+  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
+  if (!code?.teamId) {
+    res.json({ team: null, message: "You are not linked to a team yet." });
+    return;
+  }
+
+  const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, code.teamId));
+  if (!team) {
+    res.json({ team: null, message: "Team not found." });
+    return;
+  }
+
+  res.json({
+    team: {
+      id: team.id,
+      name: team.name,
+      projectTitle: team.projectTitle,
+      description: team.description ?? null,
+      githubUrl: team.githubUrl ?? null,
+      hackathonId: team.hackathonId ?? null,
+    },
+  });
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────

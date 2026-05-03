@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Contains **HackForge** — a full-stack hackathon management platform.
+pnpm workspace monorepo using TypeScript. Contains **HackForge** — a full-stack hackathon management platform with multi-event support, real team auth, live voting, judge scoring, and submission management.
 
 ## Stack
 
@@ -21,76 +21,118 @@ pnpm workspace monorepo using TypeScript. Contains **HackForge** — a full-stac
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
+- `pnpm run typecheck:libs` — rebuild composite lib declarations (run after schema changes)
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
+- `pnpm --filter @workspace/db run push-force` — force push (destroys data — dev only)
 
 ## HackForge Platform
 
 ### Artifacts
-- `artifacts/hackforge` — React+Vite frontend (port 21720, previewPath `/`)
+- `artifacts/hackforge` — React+Vite frontend (previewPath `/`)
 - `artifacts/api-server` — Express API server (port 8080, previewPath `/api`)
 
-### Features
-- **Home** (`/`): Participation code entry (HACK-XXXX format), event status display
-- **Watch** (`/watch`): Protected YouTube live stream + real-time team voting with live results
-- **Results** (`/results`): Public transparent results page (shown when admin publishes)
-- **Admin** (`/admin`): Full command centre with tabs: Stats, Codes, Teams, Polls, Judges, Scores, Event Config, Action Logs
-- **Judge Portal** (`/judges`): Exclusive judges login + per-team scoring (0–10 + Innovation/Execution/Presentation sub-scores + feedback) + leaderboard + live stream tab
+### Pages
+- **Home** (`/`): Unified code login (participant/judge/admin), active hackathon info, past events list, phase tracker
+- **Watch** (`/watch`): Live stream embed, voting panel, team info banner, project submission form (for team members)
+- **Results** (`/results`): All hackathons list (live/past/upcoming); `/results/:slug` for per-hackathon results
+- **Admin** (`/admin`): 9-tab command centre — Dashboard, Events, Codes, Teams, Judges, Scores, Polls, Config, Logs
+- **Judge Portal** (`/judges`): Scoring interface with per-team breakdown (overall + innovation/execution/presentation + feedback)
 
-### Auth
-- Participants: JWT token stored as `hackforge_token` in localStorage
-- Admins: JWT token stored as `hackforge_admin_token` in localStorage
-- Judges: JWT token stored as `hackforge_judge_token` in localStorage
-- Default admin: `admin@hackforge.in` / `HackForge@2025`
-- `artifacts/hackforge/src/lib/auth.ts` — `useAuthTokens()` hook, path-aware token getter
+### Auth Model
+Three roles via a single `POST /api/auth/login` endpoint (detects role from code prefix):
+- **Participant**: single-use `HACKFORGE_PART_XXXXXXXX` codes → stored as `hackforge_token`
+- **Admin**: reusable `HACKFORGE_ADMIN@XX` codes → stored as `hackforge_admin_token`
+- **Judge**: reusable `HACKFORGE_JUDGE@XX` codes → stored as `hackforge_judge_token`
+
+Team auth: participant codes can be bound to a team via `teamId` field on `participation_codes`. Admin assigns via `POST /api/teams/:id/assign-code`. Bound participants see their team info and submission form on `/watch`.
 
 ### DB Schema (`lib/db/src/schema/hackforge.ts`)
+
 Tables:
-- `participation_codes` — HACK-XXXX codes with used/unused tracking
-- `sessions` — auth tokens for participants, admins, and judges (`isJudge`, `judgeId` fields)
-- `admins` — admin accounts
-- `judges` — judge accounts (name, email, passwordHash)
-- `teams` — hackathon teams with project info
-- `submissions` — team project submissions (github, demo, slides URLs)
-- `judge_scores` — per-judge per-team scores with sub-criteria (innovation, execution, presentation)
-- `polls` — voting polls
-- `votes` — participant votes
-- `event_config` — global event settings (phase, stream, resultsPublished, judgeResultsVisible)
-- `admin_logs` — audit log of admin actions
+- `hackathons` — multi-event support (id, name, slug, status: upcoming|active|completed, phase, streamUrl, resultsPublished, judgeResultsVisible, prizePool, grandPrize, submissionLocked)
+- `participation_codes` — unified codes table (role: participant|admin|judge, isReusable, teamId FK for team binding)
+- `sessions` — auth tokens (token, codeId, isAdmin, isJudge)
+- `admins` — legacy admin accounts (not used for login)
+- `teams` — hackathon teams (hackathonId FK, name, projectTitle, description, githubUrl)
+- `submissions` — project submissions per team (projectTitle, description, githubUrl, demoUrl, slidesUrl)
+- `judge_scores` — per-judge per-team scores (score 0–10, innovation, execution, presentation, feedback)
+- `polls` — voting polls (hackathonId FK, isActive, isFrozen)
+- `votes` — participant votes (codeId, teamId, pollId)
+- `event_config` — legacy singleton (kept for OpenAPI backward compat, synced from active hackathon)
+- `admin_logs` — audit log
 
 ### API Routes
-- `POST /api/auth/verify-code` — participant login
-- `POST /api/auth/admin/login` — admin login
-- `GET /api/auth/me` — session info (participant/admin/judge)
-- `POST /api/judges/login` — judge login
-- `GET /api/judges/me` — judge profile
-- `GET /api/judges/teams` — teams with submissions + this judge's scores
-- `POST /api/judges/scores` — submit/update a score
-- `GET /api/judges/leaderboard` — aggregate judge leaderboard (access controlled)
-- `GET /api/admin/judges` — list judges
-- `POST /api/admin/judges` — create judge
-- `DELETE /api/admin/judges/:id` — delete judge
-- `POST /api/admin/judges/:id/reset-password` — reset judge password
-- `GET /api/admin/scores` — full judge score breakdown per team
-- `GET /api/submissions` — list all submissions
-- `POST /api/submissions` — create/update submission
-- `DELETE /api/submissions/:teamId` — delete submission
 
-### Seed Data
-- 3 participation codes: HACK-DEMO, HACK-TEST, HACK-ABCD
-- 5 teams: Team Nexus, ByteCraft, NeuralForge, PixelPulse, DataDrift
-- 1 poll pre-created (not yet active)
-- Event config: "HackForge 2025" in registration phase
+**Auth:**
+- `POST /api/auth/login` — unified login (all roles)
+- `GET /api/auth/me` — session info with team
+- `GET /api/auth/my-team` — participant's linked team
+- `POST /api/auth/logout`
 
-### Voting System
-Polls are team-based — participants vote for which team built the best solution. The active poll automatically includes all teams as options.
+**Hackathons (multi-event):**
+- `GET /api/hackathons` — list all
+- `GET /api/hackathons/active` — current active event
+- `GET /api/hackathons/:slug` — event details + results
+- `POST /api/hackathons` — create (admin)
+- `PUT /api/hackathons/:id` — update (admin)
+- `POST /api/hackathons/:id/activate` — set as active (admin)
+- `POST /api/hackathons/:id/complete` — archive (admin)
+- `DELETE /api/hackathons/:id` — delete (admin)
 
-### Judge Scoring System
-- Judges log in at `/judges` with email/password credentials created by admin
-- Scores are 0–10 with optional sub-scores for Innovation, Execution, and Presentation
-- Admin can see full per-judge breakdown in the Scores tab of the admin dashboard
-- Judge leaderboard is hidden by default; admin can toggle `judgeResultsVisible` in Event Config
+**Teams:**
+- `GET /api/teams` — list (supports `?hackathonId=` and `?active=true`), includes `members` array
+- `POST /api/teams` — create (auto-assigns to active hackathon)
+- `PUT /api/teams/:id`, `DELETE /api/teams/:id`
+- `POST /api/teams/:id/assign-code` — bind participant code to team (admin)
+- `POST /api/teams/unassign-code` — unbind code from team (admin)
+- `GET /api/teams/leaderboard`
+
+**Results:**
+- `GET /api/results` — active event public results (legacy)
+- `GET /api/results/hackathons` — all hackathons summary
+- `GET /api/results/hackathon/:slug` — per-hackathon detailed results
+- `GET /api/results/export` — CSV export (admin)
+
+**Submissions:**
+- `GET /api/submissions` — all (admin/judge)
+- `GET /api/submissions/:teamId` — team's submission (locked status included)
+- `POST /api/submissions` — upsert (respects submissionLocked phase)
+- `DELETE /api/submissions/:teamId` — admin only
+
+**Codes:**
+- `GET /api/codes` — list participant codes (admin)
+- `POST /api/codes` — generate participant codes
+- `POST /api/codes/:code/reset`, `DELETE /api/codes/:code`
+- `GET /api/codes/judges` — list judge codes (admin)
+- `POST /api/codes/judges` — create judge code
+- `DELETE /api/codes/judges/:id`
+
+**Admin:**
+- `GET /api/admin/dashboard` — stats (totalCodes, linkedCodes, activeTeams, totalJudges, totalSubmissions, etc.)
+- `GET /api/admin/scores` — aggregate judge scores with per-judge breakdown (supports `?hackathonId=`)
+- `GET /api/admin/logs`
+
+**Judges:**
+- `GET /api/judges/me`, `GET /api/judges/teams`
+- `POST /api/judges/scores` — submit/update score
+- `GET /api/judges/scores`, `GET /api/judges/leaderboard`
+
+**Polls/Votes/Event (legacy compat):**
+- `GET|POST /api/polls`, `POST /api/polls/:id/activate|deactivate`, `GET /api/polls/active`
+- `POST /api/votes`, `GET /api/votes/my-vote`
+- `GET|PUT /api/event/status`
+
+### Seed Data (dev)
+- 2 hackathons: HackForge 2024 (completed, results published), HackForge 2025 (active, registration phase)
+- Admin code: `HACKFORGE_ADMIN@01`
+- Judge codes: `HACKFORGE_JUDGE@01`, `HACKFORGE_JUDGE@02`, `HACKFORGE_JUDGE@03`
+- 5 teams: BitCraft, Quantum Coders, Syntax Squad, The Builders, Team Nexus (all in HackForge 2025)
+
+### Notes
+- After schema changes, run `pnpm run typecheck:libs` to rebuild lib declarations before API server typecheck
+- The `event_config` table is kept for OpenAPI backward compat; it's synced from the active hackathon on updates
+- Submission lock: locked if `hackathons.submissionLocked=true` OR phase is `elimination`/`finale`
+- HackForge 2024 has `resultsPublished=true` but no teams assigned to it (teams are in 2025)
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
