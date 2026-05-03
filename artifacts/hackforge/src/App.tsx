@@ -8,6 +8,7 @@ import Home from "@/pages/Home";
 import Watch from "@/pages/Watch";
 import Results from "@/pages/Results";
 import Admin from "@/pages/Admin";
+import Judges from "@/pages/Judges";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ function Router() {
           <Route path="/watch" component={Watch} />
           <Route path="/results" component={Results} />
           <Route path="/admin" component={Admin} />
+          <Route path="/judges" component={Judges} />
           <Route component={NotFound} />
         </Switch>
       </main>

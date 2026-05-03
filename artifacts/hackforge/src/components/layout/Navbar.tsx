@@ -3,30 +3,38 @@ import { Link, useLocation } from "wouter";
 import { useGetEventStatus, useLogout, useGetMe } from "@workspace/api-client-react";
 import { useAuthTokens } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Terminal, LogOut, LayoutDashboard, Trophy, Tv, Menu, X } from "lucide-react";
+import { Terminal, LogOut, LayoutDashboard, Trophy, Tv, Menu, X, Scale } from "lucide-react";
 
 export function Navbar() {
   const [location, setLocation] = useLocation();
   const { data: eventStatus } = useGetEventStatus();
   const { data: me } = useGetMe();
-  const { logout, adminLogout, getAdminToken, getToken } = useAuthTokens();
+  const { logout, adminLogout, judgeLogout, getAdminToken, getToken, getJudgeToken } = useAuthTokens();
   const logoutMutation = useLogout();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const hasAdminToken = !!getAdminToken();
   const hasParticipantToken = !!getToken();
+  const hasJudgeToken = !!getJudgeToken();
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
       onSuccess: () => {
         logout();
         adminLogout();
+        judgeLogout();
         setLocation("/");
-      }
+      },
+      onError: () => {
+        logout();
+        adminLogout();
+        judgeLogout();
+        setLocation("/");
+      },
     });
   };
 
-  const navLinks = [
+  const navLinks: { href: string; label: string; icon: React.ReactNode }[] = [
     { href: "/", label: "Home", icon: <Terminal className="w-4 h-4 mr-2" /> },
     { href: "/results", label: "Results", icon: <Trophy className="w-4 h-4 mr-2" /> },
   ];
@@ -36,8 +44,14 @@ export function Navbar() {
   }
 
   if (hasAdminToken || me?.isAdmin) {
-    navLinks.push({ href: "/admin", label: "Admin Command", icon: <LayoutDashboard className="w-4 h-4 mr-2" /> });
+    navLinks.push({ href: "/admin", label: "Admin", icon: <LayoutDashboard className="w-4 h-4 mr-2" /> });
   }
+
+  if (hasJudgeToken || (me as unknown as Record<string, unknown>)?.isJudge) {
+    navLinks.push({ href: "/judges", label: "Judge Portal", icon: <Scale className="w-4 h-4 mr-2" /> });
+  }
+
+  const anyToken = hasParticipantToken || hasAdminToken || hasJudgeToken;
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -53,14 +67,18 @@ export function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           <div className="flex items-center gap-4">
             {navLinks.map((link) => (
-              <Link key={link.href} href={link.href} className={`text-sm font-medium transition-colors hover:text-primary flex items-center ${location === link.href ? "text-primary" : "text-muted-foreground"}`}>
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`text-sm font-medium transition-colors hover:text-primary flex items-center ${location === link.href ? "text-primary" : "text-muted-foreground"}`}
+              >
                 {link.icon}
                 {link.label}
               </Link>
             ))}
           </div>
-          
-          {(hasParticipantToken || hasAdminToken) && (
+
+          {anyToken && (
             <div className="flex items-center gap-4 pl-4 border-l border-border">
               {me?.participantCode && (
                 <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded-sm">
@@ -88,9 +106,9 @@ export function Navbar() {
         <div className="md:hidden border-b border-border bg-card">
           <div className="container mx-auto px-4 py-4 flex flex-col gap-4">
             {navLinks.map((link) => (
-              <Link 
-                key={link.href} 
-                href={link.href} 
+              <Link
+                key={link.href}
+                href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
                 className={`text-sm font-medium transition-colors hover:text-primary flex items-center py-2 ${location === link.href ? "text-primary" : "text-muted-foreground"}`}
               >
@@ -98,7 +116,7 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
-            {(hasParticipantToken || hasAdminToken) && (
+            {anyToken && (
               <Button variant="outline" size="sm" onClick={handleLogout} className="justify-start text-muted-foreground hover:text-destructive mt-2 w-full">
                 <LogOut className="w-4 h-4 mr-2" />
                 Disconnect

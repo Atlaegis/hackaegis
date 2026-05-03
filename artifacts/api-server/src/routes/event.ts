@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, eventConfigTable, adminLogsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { UpdateEventStatusBody } from "@workspace/api-zod";
 import { extractToken, getSessionFromToken } from "../lib/auth";
 
@@ -33,6 +33,7 @@ function formatConfig(config: typeof eventConfigTable.$inferSelect) {
     streamUrl: config.streamUrl ?? null,
     streamActive: config.streamActive,
     resultsPublished: config.resultsPublished,
+    judgeResultsVisible: config.judgeResultsVisible,
     eventName: config.eventName,
     tagline: config.tagline,
     updatedAt: config.updatedAt.toISOString(),
@@ -54,9 +55,7 @@ router.put("/event/status", async (req: Request, res: Response) => {
   }
 
   const config = await getOrCreateConfig();
-  const updateData: Partial<typeof eventConfigTable.$inferInsert> = {
-    updatedAt: new Date(),
-  };
+  const updateData: Partial<typeof eventConfigTable.$inferInsert> = { updatedAt: new Date() };
 
   if (parse.data.phase !== undefined) updateData.phase = parse.data.phase;
   if (parse.data.streamUrl !== undefined) updateData.streamUrl = parse.data.streamUrl;
@@ -65,7 +64,11 @@ router.put("/event/status", async (req: Request, res: Response) => {
   if (parse.data.eventName !== undefined) updateData.eventName = parse.data.eventName;
   if (parse.data.tagline !== undefined) updateData.tagline = parse.data.tagline;
 
-  const { eq } = await import("drizzle-orm");
+  // Handle judgeResultsVisible from raw body (not in OpenAPI spec yet)
+  if (typeof req.body?.judgeResultsVisible === "boolean") {
+    updateData.judgeResultsVisible = req.body.judgeResultsVisible;
+  }
+
   const [updated] = await db
     .update(eventConfigTable)
     .set(updateData)

@@ -8,6 +8,8 @@ import votesRouter from "./votes";
 import resultsRouter from "./results";
 import eventRouter from "./event";
 import adminRouter from "./admin";
+import judgesRouter from "./judges";
+import submissionsRouter from "./submissions";
 
 const router: IRouter = Router();
 
@@ -20,5 +22,7 @@ router.use(votesRouter);
 router.use(resultsRouter);
 router.use(eventRouter);
 router.use(adminRouter);
+router.use(judgesRouter);
+router.use(submissionsRouter);
 
 export default router;

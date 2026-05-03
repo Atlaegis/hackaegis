@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useAdminLogin,
   useGetAdminDashboard,
@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   LayoutDashboard, Users, Code2, BarChart2, Settings, ScrollText,
   RefreshCw, Trash2, Play, Square, Plus, LogIn, Terminal,
-  Activity, CheckCircle, XCircle,
+  Activity, CheckCircle, Scale, Trophy, ExternalLink, Github, Monitor, FileText,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -107,11 +107,13 @@ function DashboardTab() {
     { label: "Used Codes", value: dashboard?.usedCodes ?? 0, color: "text-chart-3" },
     { label: "Teams", value: dashboard?.totalTeams ?? 0, color: "text-chart-2" },
     { label: "Total Votes", value: dashboard?.totalVotes ?? 0, color: "text-chart-4" },
+    { label: "Judges", value: (dashboard as unknown as Record<string, number>)?.totalJudges ?? 0, color: "text-chart-2" },
+    { label: "Submissions", value: (dashboard as unknown as Record<string, number>)?.totalSubmissions ?? 0, color: "text-primary" },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {stats.map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-4">
@@ -166,23 +168,17 @@ function CodesTab() {
   };
 
   const handleReset = (code: string) => {
-    resetCode.mutate(
-      { code },
-      {
-        onSuccess: () => { toast({ title: "Code reset" }); refetch(); },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
+    resetCode.mutate({ code }, {
+      onSuccess: () => { toast({ title: "Code reset" }); refetch(); },
+      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    });
   };
 
   const handleDelete = (code: string) => {
-    deleteCode.mutate(
-      { code },
-      {
-        onSuccess: () => { toast({ title: "Code deleted" }); refetch(); },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
+    deleteCode.mutate({ code }, {
+      onSuccess: () => { toast({ title: "Code deleted" }); refetch(); },
+      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    });
   };
 
   return (
@@ -191,17 +187,9 @@ function CodesTab() {
         <CardHeader><CardTitle className="text-sm font-mono">GENERATE CODES</CardTitle></CardHeader>
         <CardContent>
           <div className="flex gap-3">
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={count}
-              onChange={(e) => setCount(Number(e.target.value))}
-              className="w-28"
-            />
+            <Input type="number" min={1} max={100} value={count} onChange={(e) => setCount(Number(e.target.value))} className="w-28" />
             <Button onClick={handleGenerate} disabled={generateCodes.isPending}>
-              <Plus className="w-4 h-4 mr-2" />
-              Generate
+              <Plus className="w-4 h-4 mr-2" /> Generate
             </Button>
           </div>
         </CardContent>
@@ -279,13 +267,10 @@ function TeamsTab() {
   };
 
   const handleDelete = (id: number) => {
-    deleteTeam.mutate(
-      { id },
-      {
-        onSuccess: () => { toast({ title: "Team deleted" }); refetch(); },
-        onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-      }
-    );
+    deleteTeam.mutate({ id }, {
+      onSuccess: () => { toast({ title: "Team deleted" }); refetch(); },
+      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    });
   };
 
   return (
@@ -324,10 +309,7 @@ function TeamsTab() {
                     {team.projectTitle && <p className="text-sm text-muted-foreground">{team.projectTitle}</p>}
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      variant="ghost" size="sm"
-                      onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle ?? "" }); }}
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle ?? "" }); }}>
                       Edit
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(team.id)} className="text-destructive hover:text-destructive">
@@ -354,10 +336,7 @@ function PollsTab() {
   const [question, setQuestion] = useState("");
 
   const handleCreate = () => {
-    if (!question) {
-      toast({ title: "A question is required", variant: "destructive" });
-      return;
-    }
+    if (!question) { toast({ title: "A question is required", variant: "destructive" }); return; }
     createPoll.mutate(
       { data: { question } },
       {
@@ -365,20 +344,6 @@ function PollsTab() {
         onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
       }
     );
-  };
-
-  const handleActivate = (id: number) => {
-    activatePoll.mutate({ id }, {
-      onSuccess: () => { toast({ title: "Poll activated" }); refetch(); },
-      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-    });
-  };
-
-  const handleDeactivate = (id: number) => {
-    deactivatePoll.mutate({ id }, {
-      onSuccess: () => { toast({ title: "Poll deactivated" }); refetch(); },
-      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-    });
   };
 
   return (
@@ -411,11 +376,11 @@ function PollsTab() {
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   {poll.isActive ? (
-                    <Button variant="outline" size="sm" onClick={() => handleDeactivate(poll.id)}>
+                    <Button variant="outline" size="sm" onClick={() => deactivatePoll.mutate({ id: poll.id }, { onSuccess: () => { toast({ title: "Poll deactivated" }); refetch(); } })}>
                       <Square className="w-3 h-3 mr-1" /> Stop
                     </Button>
                   ) : (
-                    <Button size="sm" onClick={() => handleActivate(poll.id)}>
+                    <Button size="sm" onClick={() => activatePoll.mutate({ id: poll.id }, { onSuccess: () => { toast({ title: "Poll activated" }); refetch(); } })}>
                       <Play className="w-3 h-3 mr-1" /> Activate
                     </Button>
                   )}
@@ -435,25 +400,21 @@ function EventTab() {
   const updateEvent = useUpdateEventStatus();
   const { toast } = useToast();
   const [form, setForm] = useState({
-    eventName: "",
-    tagline: "",
-    streamUrl: "",
+    eventName: "", tagline: "", streamUrl: "",
     phase: "" as string,
     streamActive: false,
     resultsPublished: false,
+    judgeResultsVisible: false,
   });
 
   const handleUpdate = () => {
     const updateData: {
-      eventName?: string;
-      tagline?: string;
-      streamUrl?: string | null;
-      phase?: UpdateEventStatusBodyPhase;
-      streamActive?: boolean;
-      resultsPublished?: boolean;
-    } = {
+      eventName?: string; tagline?: string; streamUrl?: string | null;
+      phase?: UpdateEventStatusBodyPhase; streamActive?: boolean; resultsPublished?: boolean;
+    } & Record<string, unknown> = {
       streamActive: form.streamActive,
       resultsPublished: form.resultsPublished,
+      judgeResultsVisible: form.judgeResultsVisible,
     };
 
     if (form.eventName) updateData.eventName = form.eventName;
@@ -468,81 +429,53 @@ function EventTab() {
   };
 
   const phases = Object.values(PhaseValues);
+  const eventStatusExt = eventStatus as (typeof eventStatus & { judgeResultsVisible?: boolean }) | undefined;
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono">CURRENT STATUS</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="bg-muted/30 rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Event Name</p>
-            <p className="font-semibold mt-1">{eventStatus?.eventName ?? "—"}</p>
-          </div>
-          <div className="bg-muted/30 rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Phase</p>
-            <p className="font-mono font-semibold mt-1 text-primary">{eventStatus?.phase?.toUpperCase() ?? "—"}</p>
-          </div>
-          <div className="bg-muted/30 rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Stream</p>
-            <p className="font-semibold mt-1">{eventStatus?.streamActive ? "Live" : "Offline"}</p>
-          </div>
-          <div className="bg-muted/30 rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Results</p>
-            <p className="font-semibold mt-1">{eventStatus?.resultsPublished ? "Published" : "Hidden"}</p>
-          </div>
+          {[
+            { label: "Event Name", value: eventStatus?.eventName ?? "—" },
+            { label: "Phase", value: eventStatus?.phase?.toUpperCase() ?? "—", mono: true },
+            { label: "Stream", value: eventStatus?.streamActive ? "Live" : "Offline" },
+            { label: "Results", value: eventStatus?.resultsPublished ? "Published" : "Hidden" },
+            { label: "Judge Results", value: eventStatusExt?.judgeResultsVisible ? "Visible" : "Hidden" },
+          ].map(({ label, value, mono }) => (
+            <div key={label} className="bg-muted/30 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className={`font-semibold mt-1 ${mono ? "font-mono text-primary" : ""}`}>{value}</p>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono">UPDATE EVENT</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            placeholder={`Event name (current: ${eventStatus?.eventName ?? "—"})`}
-            value={form.eventName}
-            onChange={(e) => setForm((p) => ({ ...p, eventName: e.target.value }))}
-          />
-          <Input
-            placeholder={`Tagline (current: ${eventStatus?.tagline ?? "—"})`}
-            value={form.tagline}
-            onChange={(e) => setForm((p) => ({ ...p, tagline: e.target.value }))}
-          />
-          <Input
-            placeholder="YouTube stream URL"
-            value={form.streamUrl}
-            onChange={(e) => setForm((p) => ({ ...p, streamUrl: e.target.value }))}
-          />
+          <Input placeholder={`Event name (current: ${eventStatus?.eventName ?? "—"})`} value={form.eventName} onChange={(e) => setForm((p) => ({ ...p, eventName: e.target.value }))} />
+          <Input placeholder={`Tagline (current: ${eventStatus?.tagline ?? "—"})`} value={form.tagline} onChange={(e) => setForm((p) => ({ ...p, tagline: e.target.value }))} />
+          <Input placeholder="YouTube stream URL" value={form.streamUrl} onChange={(e) => setForm((p) => ({ ...p, streamUrl: e.target.value }))} />
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground font-medium">Phase</p>
             <div className="flex flex-wrap gap-2">
               {phases.map((ph) => (
-                <Button
-                  key={ph}
-                  variant={form.phase === ph ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setForm((p) => ({ ...p, phase: ph }))}
-                  className="font-mono text-xs"
-                >
+                <Button key={ph} variant={form.phase === ph ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, phase: ph }))} className="font-mono text-xs">
                   {ph.toUpperCase()}
                 </Button>
               ))}
             </div>
           </div>
-          <div className="flex gap-4">
-            <Button
-              variant={form.streamActive ? "default" : "outline"}
-              size="sm"
-              onClick={() => setForm((p) => ({ ...p, streamActive: !p.streamActive }))}
-            >
-              <Activity className="w-4 h-4 mr-2" />
-              Stream {form.streamActive ? "Live" : "Offline"}
+          <div className="flex flex-wrap gap-3">
+            <Button variant={form.streamActive ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, streamActive: !p.streamActive }))}>
+              <Activity className="w-4 h-4 mr-2" /> Stream {form.streamActive ? "Live" : "Offline"}
             </Button>
-            <Button
-              variant={form.resultsPublished ? "default" : "outline"}
-              size="sm"
-              onClick={() => setForm((p) => ({ ...p, resultsPublished: !p.resultsPublished }))}
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Results {form.resultsPublished ? "Published" : "Hidden"}
+            <Button variant={form.resultsPublished ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, resultsPublished: !p.resultsPublished }))}>
+              <CheckCircle className="w-4 h-4 mr-2" /> Results {form.resultsPublished ? "Published" : "Hidden"}
+            </Button>
+            <Button variant={form.judgeResultsVisible ? "default" : "outline"} size="sm" onClick={() => setForm((p) => ({ ...p, judgeResultsVisible: !p.judgeResultsVisible }))}>
+              <Scale className="w-4 h-4 mr-2" /> Judge Scores {form.judgeResultsVisible ? "Visible" : "Hidden"}
             </Button>
           </div>
           <Button onClick={handleUpdate} disabled={updateEvent.isPending} className="w-full">
@@ -550,6 +483,230 @@ function EventTab() {
           </Button>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ─── Judges Tab ─────────────────────────────────────────────────────────────────
+interface JudgeEntry { id: number; name: string; email: string; scoresSubmitted: number; createdAt: string; }
+
+function JudgesTab({ adminToken }: { adminToken: string }) {
+  const [judges, setJudges] = useState<JudgeEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [creating, setCreating] = useState(false);
+  const [resetId, setResetId] = useState<number | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const { toast } = useToast();
+
+  const fetchJudges = () => {
+    setLoading(true);
+    fetch("/api/admin/judges", { headers: { Authorization: `Bearer ${adminToken}` } })
+      .then((r) => r.json())
+      .then(setJudges)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchJudges(); }, []);
+
+  const handleCreate = async () => {
+    if (!form.name || !form.email || !form.password) {
+      toast({ title: "Name, email, and password are required", variant: "destructive" });
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/admin/judges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Failed to create judge");
+      toast({ title: "Judge created", description: `${form.name} can now log in at /judges` });
+      setForm({ name: "", email: "", password: "" });
+      fetchJudges();
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+    }
+    setCreating(false);
+  };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Remove judge "${name}"?`)) return;
+    await fetch(`/api/admin/judges/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${adminToken}` } });
+    toast({ title: "Judge removed" });
+    fetchJudges();
+  };
+
+  const handleResetPassword = async (id: number) => {
+    if (!resetPassword) { toast({ title: "Enter a new password", variant: "destructive" }); return; }
+    const res = await fetch(`/api/admin/judges/${id}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ password: resetPassword }),
+    });
+    if (res.ok) {
+      toast({ title: "Password reset successfully" });
+      setResetId(null);
+      setResetPassword("");
+    } else {
+      toast({ title: "Failed to reset password", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-mono">ADD JUDGE</CardTitle>
+          <CardDescription>Judges access the scoring portal at <code className="text-primary">/judges</code></CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input placeholder="Full name *" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
+              <Input type="email" placeholder="Email *" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+              <Input type="password" placeholder="Password *" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} />
+            </div>
+            <Button onClick={handleCreate} disabled={creating}>
+              <Plus className="w-4 h-4 mr-2" /> {creating ? "Creating..." : "Add Judge"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-mono">JUDGES</CardTitle>
+          <CardDescription>{judges.length} judge{judges.length !== 1 ? "s" : ""} registered</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center text-muted-foreground py-6 text-sm">Loading...</div>
+          ) : judges.length === 0 ? (
+            <div className="text-center text-muted-foreground py-6 text-sm">No judges yet. Add one above.</div>
+          ) : (
+            <div className="space-y-3">
+              {judges.map((judge) => (
+                <div key={judge.id} className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">{judge.name}</p>
+                      <p className="text-sm text-muted-foreground">{judge.email}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary" className="text-xs font-mono">
+                        {judge.scoresSubmitted} scores
+                      </Badge>
+                      <Button variant="ghost" size="sm" onClick={() => { setResetId(resetId === judge.id ? null : judge.id); setResetPassword(""); }}>
+                        <RefreshCw className="w-3 h-3 mr-1" /> Reset PW
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(judge.id, judge.name)}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  {resetId === judge.id && (
+                    <div className="flex gap-2 pt-1">
+                      <Input type="password" placeholder="New password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} className="h-8 text-sm" />
+                      <Button size="sm" onClick={() => handleResetPassword(judge.id)}>Save</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setResetId(null)}>Cancel</Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Scores Tab ────────────────────────────────────────────────────────────────
+interface TeamScore {
+  rank: number; teamId: number; teamName: string; projectTitle: string;
+  demoUrl: string | null; githubUrl: string | null; slidesUrl: string | null;
+  averageScore: number | null; judgesScored: number; totalJudges: number;
+  judgeBreakdown: { judgeId: number; judgeName: string; score: number; innovation: number | null; execution: number | null; presentation: number | null; feedback: string | null; }[];
+}
+
+function ScoresTab({ adminToken }: { adminToken: string }) {
+  const [data, setData] = useState<{ judgeCount: number; teams: TeamScore[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/scores", { headers: { Authorization: `Bearer ${adminToken}` } })
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-center text-muted-foreground py-12 text-sm">Loading scores...</div>;
+  if (!data) return <div className="text-center text-muted-foreground py-12 text-sm">Failed to load.</div>;
+
+  const rankColor = (rank: number) => rank === 1 ? "border-yellow-400/40 bg-yellow-400/5" : rank === 2 ? "border-slate-300/20" : rank === 3 ? "border-amber-600/20" : "border-border";
+  const scoreColor = (s: number | null) => !s ? "text-muted-foreground" : s >= 8 ? "text-chart-3" : s >= 5 ? "text-chart-1" : "text-chart-4";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{data.judgeCount} judge{data.judgeCount !== 1 ? "s" : ""} · Scores 0–10</p>
+        <Badge variant="secondary" className="font-mono">{data.teams.filter((t) => t.judgesScored > 0).length} teams scored</Badge>
+      </div>
+
+      {data.teams.map((team) => (
+        <Card key={team.teamId} className={`${rankColor(team.rank)} transition-all`}>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-4 cursor-pointer" onClick={() => setExpanded(expanded === team.teamId ? null : team.teamId)}>
+              <div className="w-8 text-center font-mono font-bold text-muted-foreground text-sm pt-0.5">#{team.rank}</div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-bold">{team.teamName}</p>
+                  {team.judgesScored === 0 && <Badge variant="outline" className="text-xs text-muted-foreground">NOT SCORED</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">{team.projectTitle}</p>
+                <div className="flex gap-3 mt-1">
+                  {team.githubUrl && <a href={team.githubUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"><Github className="w-3 h-3" /> Repo</a>}
+                  {team.demoUrl && <a href={team.demoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"><Monitor className="w-3 h-3" /> Demo</a>}
+                  {team.slidesUrl && <a href={team.slidesUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"><FileText className="w-3 h-3" /> Slides</a>}
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className={`text-2xl font-bold font-mono ${scoreColor(team.averageScore)}`}>
+                  {team.averageScore !== null ? team.averageScore.toFixed(1) : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground">{team.judgesScored}/{team.totalJudges} judges</p>
+              </div>
+            </div>
+
+            {expanded === team.teamId && team.judgeBreakdown.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border space-y-3">
+                {team.judgeBreakdown.map((jb) => (
+                  <div key={jb.judgeId} className="p-3 rounded-lg bg-muted/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm">{jb.judgeName}</p>
+                      <span className={`font-mono font-bold ${scoreColor(jb.score)}`}>{jb.score}/10</span>
+                    </div>
+                    {(jb.innovation !== null || jb.execution !== null || jb.presentation !== null) && (
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        {jb.innovation !== null && <span>Innovation: <span className="text-foreground font-mono">{jb.innovation}</span></span>}
+                        {jb.execution !== null && <span>Execution: <span className="text-foreground font-mono">{jb.execution}</span></span>}
+                        {jb.presentation !== null && <span>Presentation: <span className="text-foreground font-mono">{jb.presentation}</span></span>}
+                      </div>
+                    )}
+                    {jb.feedback && <p className="text-xs text-muted-foreground italic">"{jb.feedback}"</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -568,9 +725,7 @@ function LogsTab() {
               <div key={log.id} className="flex items-start gap-3 py-2 px-3 rounded-lg bg-muted/20 hover:bg-muted/40 text-sm">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
                 <div className="flex-1">
-                  <span className="font-mono text-xs text-muted-foreground mr-3">
-                    {new Date(log.createdAt).toLocaleString()}
-                  </span>
+                  <span className="font-mono text-xs text-muted-foreground mr-3">{new Date(log.createdAt).toLocaleString()}</span>
                   <span className="font-medium">{log.action}</span>
                   {log.details && <span className="text-muted-foreground ml-2">— {log.details}</span>}
                 </div>
@@ -595,37 +750,45 @@ export default function Admin() {
     window.location.reload();
   };
 
-  if (!getAdminToken()) {
+  const adminToken = getAdminToken();
+
+  if (!adminToken) {
     return <AdminLogin onLogin={handleLogin} />;
   }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background py-8">
-      <div className="container mx-auto px-4 max-w-4xl space-y-6">
+      <div className="container mx-auto px-4 max-w-5xl space-y-6">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
           <LayoutDashboard className="w-6 h-6 text-primary" />
           <h1 className="text-2xl font-bold font-mono">COMMAND CENTRE</h1>
         </motion.div>
 
         <Tabs defaultValue="dashboard">
-          <TabsList className="grid grid-cols-3 md:grid-cols-6 mb-6">
-            <TabsTrigger value="dashboard" className="gap-1.5 text-xs">
-              <BarChart2 className="w-3.5 h-3.5" /> Stats
+          <TabsList className="grid grid-cols-4 md:grid-cols-8 mb-6">
+            <TabsTrigger value="dashboard" className="gap-1 text-xs">
+              <BarChart2 className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Stats</span>
             </TabsTrigger>
-            <TabsTrigger value="codes" className="gap-1.5 text-xs">
-              <Code2 className="w-3.5 h-3.5" /> Codes
+            <TabsTrigger value="codes" className="gap-1 text-xs">
+              <Code2 className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Codes</span>
             </TabsTrigger>
-            <TabsTrigger value="teams" className="gap-1.5 text-xs">
-              <Users className="w-3.5 h-3.5" /> Teams
+            <TabsTrigger value="teams" className="gap-1 text-xs">
+              <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Teams</span>
             </TabsTrigger>
-            <TabsTrigger value="polls" className="gap-1.5 text-xs">
-              <Activity className="w-3.5 h-3.5" /> Polls
+            <TabsTrigger value="polls" className="gap-1 text-xs">
+              <Activity className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Polls</span>
             </TabsTrigger>
-            <TabsTrigger value="event" className="gap-1.5 text-xs">
-              <Settings className="w-3.5 h-3.5" /> Event
+            <TabsTrigger value="judges" className="gap-1 text-xs">
+              <Scale className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Judges</span>
             </TabsTrigger>
-            <TabsTrigger value="logs" className="gap-1.5 text-xs">
-              <ScrollText className="w-3.5 h-3.5" /> Logs
+            <TabsTrigger value="scores" className="gap-1 text-xs">
+              <Trophy className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Scores</span>
+            </TabsTrigger>
+            <TabsTrigger value="event" className="gap-1 text-xs">
+              <Settings className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Event</span>
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="gap-1 text-xs">
+              <ScrollText className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Logs</span>
             </TabsTrigger>
           </TabsList>
 
@@ -633,6 +796,8 @@ export default function Admin() {
           <TabsContent value="codes"><CodesTab /></TabsContent>
           <TabsContent value="teams"><TeamsTab /></TabsContent>
           <TabsContent value="polls"><PollsTab /></TabsContent>
+          <TabsContent value="judges"><JudgesTab adminToken={adminToken} /></TabsContent>
+          <TabsContent value="scores"><ScoresTab adminToken={adminToken} /></TabsContent>
           <TabsContent value="event"><EventTab /></TabsContent>
           <TabsContent value="logs"><LogsTab /></TabsContent>
         </Tabs>

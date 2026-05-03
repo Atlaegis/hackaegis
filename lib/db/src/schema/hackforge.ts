@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, timestamp, integer, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp, integer, varchar, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -14,17 +14,6 @@ export const insertParticipationCodeSchema = createInsertSchema(participationCod
 export type InsertParticipationCode = z.infer<typeof insertParticipationCodeSchema>;
 export type ParticipationCode = typeof participationCodesTable.$inferSelect;
 
-export const sessionsTable = pgTable("sessions", {
-  id: serial("id").primaryKey(),
-  token: text("token").notNull().unique(),
-  codeId: integer("code_id").notNull(),
-  isAdmin: boolean("is_admin").notNull().default(false),
-  adminEmail: varchar("admin_email", { length: 255 }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export type Session = typeof sessionsTable.$inferSelect;
-
 export const adminsTable = pgTable("admins", {
   id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -33,6 +22,29 @@ export const adminsTable = pgTable("admins", {
 });
 
 export type Admin = typeof adminsTable.$inferSelect;
+
+export const judgesTable = pgTable("judges", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Judge = typeof judgesTable.$inferSelect;
+
+export const sessionsTable = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  codeId: integer("code_id").notNull().default(0),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  isJudge: boolean("is_judge").notNull().default(false),
+  adminEmail: varchar("admin_email", { length: 255 }),
+  judgeId: integer("judge_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Session = typeof sessionsTable.$inferSelect;
 
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
@@ -46,6 +58,35 @@ export const teamsTable = pgTable("teams", {
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({ id: true, createdAt: true });
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type Team = typeof teamsTable.$inferSelect;
+
+export const submissionsTable = pgTable("submissions", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull().unique(),
+  projectTitle: varchar("project_title", { length: 500 }),
+  description: text("description"),
+  githubUrl: text("github_url"),
+  demoUrl: text("demo_url"),
+  slidesUrl: text("slides_url"),
+  submittedAt: timestamp("submitted_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type Submission = typeof submissionsTable.$inferSelect;
+
+export const judgeScoresTable = pgTable("judge_scores", {
+  id: serial("id").primaryKey(),
+  judgeId: integer("judge_id").notNull(),
+  teamId: integer("team_id").notNull(),
+  score: real("score").notNull(),
+  innovation: real("innovation"),
+  execution: real("execution"),
+  presentation: real("presentation"),
+  feedback: text("feedback"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type JudgeScore = typeof judgeScoresTable.$inferSelect;
 
 export const pollsTable = pgTable("polls", {
   id: serial("id").primaryKey(),
@@ -73,6 +114,7 @@ export const eventConfigTable = pgTable("event_config", {
   streamUrl: text("stream_url"),
   streamActive: boolean("stream_active").notNull().default(false),
   resultsPublished: boolean("results_published").notNull().default(false),
+  judgeResultsVisible: boolean("judge_results_visible").notNull().default(false),
   eventName: varchar("event_name", { length: 255 }).notNull().default("HackForge 2025"),
   tagline: varchar("tagline", { length: 500 }).notNull().default("Build. Improve. Pitch. Win."),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, participationCodesTable, sessionsTable, adminsTable } from "@workspace/db";
+import { db, participationCodesTable, sessionsTable, adminsTable, judgesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import {
@@ -44,13 +44,10 @@ router.post("/auth/verify-code", async (req: Request, res: Response) => {
     token,
     codeId: participationCode.id,
     isAdmin: false,
+    isJudge: false,
   });
 
-  res.json({
-    token,
-    participantCode: normalizedCode,
-    hasVoted: false,
-  });
+  res.json({ token, participantCode: normalizedCode, hasVoted: false });
 });
 
 router.post("/auth/admin/login", async (req: Request, res: Response) => {
@@ -74,12 +71,7 @@ router.post("/auth/admin/login", async (req: Request, res: Response) => {
   }
 
   const token = generateToken();
-  await db.insert(sessionsTable).values({
-    token,
-    codeId: 0,
-    isAdmin: true,
-    adminEmail: email,
-  });
+  await db.insert(sessionsTable).values({ token, codeId: 0, isAdmin: true, isJudge: false, adminEmail: email });
 
   res.json({ token, email, isAdmin: true });
 });
@@ -94,7 +86,13 @@ router.get("/auth/me", async (req: Request, res: Response) => {
   }
 
   if (session.isAdmin) {
-    res.json({ isAdmin: true, participantCode: null, hasVoted: null });
+    res.json({ isAdmin: true, isJudge: false, participantCode: null, hasVoted: null });
+    return;
+  }
+
+  if (session.isJudge) {
+    const [judge] = await db.select().from(judgesTable).where(eq(judgesTable.id, session.judgeId!));
+    res.json({ isAdmin: false, isJudge: true, judgeName: judge?.name ?? null, judgeId: session.judgeId, participantCode: null, hasVoted: null });
     return;
   }
 
@@ -103,11 +101,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
     .from(participationCodesTable)
     .where(eq(participationCodesTable.id, session.codeId));
 
-  res.json({
-    isAdmin: false,
-    participantCode: code?.code ?? null,
-    hasVoted: false,
-  });
+  res.json({ isAdmin: false, isJudge: false, participantCode: code?.code ?? null, hasVoted: false });
 });
 
 router.post("/auth/logout", async (req: Request, res: Response) => {
