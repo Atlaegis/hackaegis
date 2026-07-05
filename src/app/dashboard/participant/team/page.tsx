@@ -12,19 +12,37 @@ interface Team {
   members: { id: string; role: string; user: { fullName: string; email: string } }[];
 }
 
+interface CurrentEvent {
+  id: string;
+  title: string;
+  slug: string;
+}
+
 export default function TeamPage() {
   const router = useRouter();
   const [team, setTeam] = useState<Team | null>(null);
+  const [currentEvent, setCurrentEvent] = useState<CurrentEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"view" | "create" | "join">("view");
 
   useEffect(() => {
-    fetchTeam();
+    fetchInitialData();
   }, []);
 
-  async function fetchTeam() {
+  async function fetchInitialData() {
     try {
+      // Fetch the current published event
+      const eventRes = await fetch("/api/events/current");
+      if (!eventRes.ok) {
+        setError("No active event found. Please contact an organizer.");
+        setLoading(false);
+        return;
+      }
+      const event = await eventRes.json();
+      setCurrentEvent(event);
+
+      // Fetch user info
       const res = await fetch("/api/users/me");
       if (!res.ok) return;
       // For MVP, we'll show team creation/join UI
@@ -37,12 +55,17 @@ export default function TeamPage() {
   async function handleCreateTeam(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+
+    if (!currentEvent) {
+      setError("No active event found. Cannot create team.");
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
 
-    // We need an event ID — for MVP we'll use a placeholder
-    const res = await fetch("/api/events/default/teams", {
+    const res = await fetch(`/api/events/${currentEvent.id}/teams`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, description }),
@@ -63,11 +86,19 @@ export default function TeamPage() {
   async function handleJoinTeam(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+
+    if (!currentEvent) {
+      setError("No active event found. Cannot join team.");
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
     const inviteCode = formData.get("inviteCode") as string;
 
-    const res = await fetch(`/api/events/default/teams/${inviteCode}/join`, {
+    const res = await fetch(`/api/events/${currentEvent.id}/teams/join-by-code`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inviteCode }),
     });
 
     if (!res.ok) {
