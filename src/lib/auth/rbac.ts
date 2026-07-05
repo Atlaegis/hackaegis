@@ -29,12 +29,33 @@ export async function getCurrentUser() {
   return user;
 }
 
+// Super admin = platform owner, can add/remove admins
 export async function requireSuperAdmin() {
   const user = await getCurrentUser();
   if (!user.isSuperAdmin) {
     throw new ForbiddenError("Super admin access required");
   }
   return user;
+}
+
+// Admin panel access = super admin OR anyone with "admin" event role
+export async function requireAdminAccess() {
+  const user = await getCurrentUser();
+
+  // Super admin always has access
+  if (user.isSuperAdmin) return { user, level: "super" as const };
+
+  // Check if user has admin role for any event
+  const adminRole = await db.query.eventRoles.findFirst({
+    where: and(
+      eq(eventRoles.userId, user.id),
+      eq(eventRoles.role, "admin")
+    ),
+  });
+
+  if (adminRole) return { user, level: "admin" as const };
+
+  throw new ForbiddenError("Admin access required");
 }
 
 export async function requireEventRole(

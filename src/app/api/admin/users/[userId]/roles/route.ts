@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users, eventRoles } from "@/lib/db/schema";
-import { requireSuperAdmin, handleAuthError } from "@/lib/auth/rbac";
+import { requireSuperAdmin, requireAdminAccess, handleAuthError } from "@/lib/auth/rbac";
 import { eq, and } from "drizzle-orm";
 
 export async function GET(
@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    await requireSuperAdmin();
+    await requireAdminAccess();
 
     const { userId } = await params;
 
@@ -36,7 +36,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const admin = await requireSuperAdmin();
+    const { user: adminUser, level } = await requireAdminAccess();
 
     const { userId } = await params;
     const body = await request.json();
@@ -47,6 +47,14 @@ export async function POST(
       return NextResponse.json(
         { error: "eventId and role are required" },
         { status: 400 }
+      );
+    }
+
+    // Only super admin can assign/remove "admin" role
+    if (role === "admin" && level !== "super") {
+      return NextResponse.json(
+        { error: "Only super admin can assign admin role" },
+        { status: 403 }
       );
     }
 
@@ -80,7 +88,7 @@ export async function POST(
         eventId,
         userId,
         role,
-        assignedBy: admin.id,
+        assignedBy: adminUser.id,
       })
       .returning();
 
@@ -95,7 +103,7 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    await requireSuperAdmin();
+    const { level } = await requireAdminAccess();
 
     const { userId } = await params;
     const body = await request.json();
@@ -106,6 +114,14 @@ export async function DELETE(
       return NextResponse.json(
         { error: "eventId and role are required" },
         { status: 400 }
+      );
+    }
+
+    // Only super admin can remove "admin" role
+    if (role === "admin" && level !== "super") {
+      return NextResponse.json(
+        { error: "Only super admin can remove admin role" },
+        { status: 403 }
       );
     }
 

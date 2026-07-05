@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { requireSuperAdmin, handleAuthError } from "@/lib/auth/rbac";
+import { requireAdminAccess, handleAuthError } from "@/lib/auth/rbac";
 import { ilike, or, sql } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireSuperAdmin();
+    await requireAdminAccess();
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";

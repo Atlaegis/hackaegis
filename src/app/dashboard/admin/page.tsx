@@ -2,14 +2,23 @@ export const dynamic = "force-dynamic";
 
 import { getCurrentUser } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
-import { users, teams, submissions } from "@/lib/db/schema";
-import { count } from "drizzle-orm";
+import { users, teams, submissions, eventRoles } from "@/lib/db/schema";
+import { count, eq, and } from "drizzle-orm";
 import Link from "next/link";
 
 export default async function AdminDashboard() {
   const user = await getCurrentUser();
 
-  if (!user.isSuperAdmin) {
+  // Check admin access: super admin OR event admin
+  let hasAccess = user.isSuperAdmin;
+  if (!hasAccess) {
+    const adminRole = await db.query.eventRoles.findFirst({
+      where: and(eq(eventRoles.userId, user.id), eq(eventRoles.role, "admin")),
+    });
+    hasAccess = !!adminRole;
+  }
+
+  if (!hasAccess) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-8 text-center">

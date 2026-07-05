@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { requireSuperAdmin, handleAuthError } from "@/lib/auth/rbac";
+import { requireSuperAdmin, requireAdminAccess, handleAuthError } from "@/lib/auth/rbac";
 import { eq } from "drizzle-orm";
 
 export async function GET(
@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    await requireSuperAdmin();
+    await requireAdminAccess();
 
     const { userId } = await params;
 

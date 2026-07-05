@@ -2,8 +2,8 @@ import { UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { users, eventRoles } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 
 export default async function DashboardLayout({
   children,
@@ -11,14 +11,25 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { userId: clerkId } = await auth();
-  let isSuperAdmin = false;
+  let hasAdminAccess = false;
 
   if (clerkId) {
     const user = await db.query.users.findFirst({
       where: eq(users.clerkId, clerkId),
-      columns: { isSuperAdmin: true },
+      columns: { id: true, isSuperAdmin: true },
     });
-    isSuperAdmin = user?.isSuperAdmin ?? false;
+
+    if (user?.isSuperAdmin) {
+      hasAdminAccess = true;
+    } else if (user) {
+      const adminRole = await db.query.eventRoles.findFirst({
+        where: and(
+          eq(eventRoles.userId, user.id),
+          eq(eventRoles.role, "admin")
+        ),
+      });
+      hasAdminAccess = !!adminRole;
+    }
   }
 
   return (
@@ -60,7 +71,7 @@ export default async function DashboardLayout({
             >
               Transparency
             </Link>
-            {isSuperAdmin && (
+            {hasAdminAccess && (
               <Link
                 href="/dashboard/admin"
                 className="rounded-md px-3 py-1.5 text-sm font-medium text-orange-400 hover:bg-gray-800 hover:text-orange-300 transition-colors"
