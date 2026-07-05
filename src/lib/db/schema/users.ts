@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 100 }),
   country: varchar("country", { length: 100 }).default("India"),
+  isSuperAdmin: boolean("is_super_admin").default(false),
   onboardingCompleted: boolean("onboarding_completed").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

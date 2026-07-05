@@ -29,11 +29,24 @@ export async function getCurrentUser() {
   return user;
 }
 
+export async function requireSuperAdmin() {
+  const user = await getCurrentUser();
+  if (!user.isSuperAdmin) {
+    throw new ForbiddenError("Super admin access required");
+  }
+  return user;
+}
+
 export async function requireEventRole(
   eventId: string,
   allowedRoles: Role[]
 ) {
   const user = await getCurrentUser();
+
+  // Super admins bypass role checks
+  if (user.isSuperAdmin) {
+    return { user, role: "admin" as Role };
+  }
 
   const role = await db.query.eventRoles.findFirst({
     where: and(

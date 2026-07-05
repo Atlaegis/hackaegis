@@ -63,11 +63,17 @@ export async function POST() {
     });
   }
 
+  // Also promote to super admin
+  if (!user.isSuperAdmin) {
+    await db.update(users).set({ isSuperAdmin: true }).where(eq(users.id, user.id));
+  }
+
   return NextResponse.json({
     success: true,
     userId: user.id,
     email: user.email,
     roles: ["admin", "organizer"],
+    isSuperAdmin: true,
     eventId: event.id,
     eventTitle: event.title,
   });
