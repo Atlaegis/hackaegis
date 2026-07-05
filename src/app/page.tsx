@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const { userId } = await auth();
+
   return (
     <main className="flex-1">
       {/* Navbar */}
@@ -11,29 +14,32 @@ export default function HomePage() {
             Hack<span className="text-orange-400">Aegis</span>
           </Link>
           <div className="flex items-center gap-4">
-            <SignedIn>
-              <Link
-                href="/dashboard/participant"
-                className="text-sm text-gray-300 hover:text-white transition-colors"
-              >
-                Dashboard
-              </Link>
-              <UserButton />
-            </SignedIn>
-            <SignedOut>
-              <Link
-                href="/sign-in"
-                className="text-sm text-gray-300 hover:text-white transition-colors"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/sign-up"
-                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-400 transition-colors"
-              >
-                Sign Up
-              </Link>
-            </SignedOut>
+            {userId ? (
+              <>
+                <Link
+                  href="/dashboard/participant"
+                  className="text-sm text-gray-300 hover:text-white transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <UserButton />
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/sign-in"
+                  className="text-sm text-gray-300 hover:text-white transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-400 transition-colors"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
