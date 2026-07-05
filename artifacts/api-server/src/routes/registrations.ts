@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, registrationsTable, participationCodesTable, adminLogsTable, hackathonsTable } from "@workspace/db";
+import { db, registrationsTable, participationCodesTable, adminLogsTable, hackathonsTable, teamsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { extractToken, getSessionFromToken, generateParticipantCode } from "../lib/auth";
 import { registrationRateLimit } from "../middlewares/rateLimiter";
@@ -134,13 +134,36 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
     attempts++;
   }
 
-  // Insert into participation_codes
+  // Resolve hackathon for the team (fall back to active hackathon)
+  let teamHackathonId = reg.hackathonId ?? null;
+  if (!teamHackathonId) {
+    const [active] = await db.select({ id: hackathonsTable.id }).from(hackathonsTable).where(eq(hackathonsTable.status, "active")).orderBy(desc(hackathonsTable.id));
+    teamHackathonId = active?.id ?? null;
+  }
+
+  // Find an existing team with the same name in this hackathon, or create one
+  let team = teamHackathonId
+    ? (await db.select().from(teamsTable).where(eq(teamsTable.hackathonId, teamHackathonId)))
+        .find((t) => t.name.toLowerCase() === reg.teamName.toLowerCase())
+    : undefined;
+
+  if (!team) {
+    const [createdTeam] = await db.insert(teamsTable).values({
+      hackathonId: teamHackathonId,
+      name: reg.teamName,
+      projectTitle: "TBD",
+    }).returning();
+    team = createdTeam;
+  }
+
+  // Insert into participation_codes, linked directly to the team
   await db.insert(participationCodesTable).values({
     code,
     role: "participant",
     label: `${reg.fullName} (${reg.teamName})`,
     isReusable: false,
     isUsed: false,
+    teamId: team.id,
   });
 
   // Update registration
@@ -149,8 +172,8 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
     .where(eq(registrationsTable.id, id))
     .returning();
 
-  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code assigned`);
-  res.json({ message: "Approved", code: updated.participantCode, registration: updated });
+  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code assigned & linked to team #${team.id}`);
+  res.json({ message: "Approved", code: updated.participantCode, registration: updated, teamId: team.id });
 });
 
 // ─── Admin: reject registration ───────────────────────────────────────────────
