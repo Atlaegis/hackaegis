@@ -15,13 +15,29 @@ export async function GET() {
       },
     });
 
-    const result = userEvents
-      .filter((er) => er.event && !er.event.deletedAt)
-      .map((er) => ({
-        role: er.role,
-        assignedAt: er.assignedAt,
-        event: er.event,
-      }));
+    // Deduplicate by event — user may have multiple roles for the same event
+    const eventMap = new Map<string, { roles: string[]; assignedAt: Date; event: typeof userEvents[0]["event"] }>();
+
+    for (const er of userEvents) {
+      if (!er.event || er.event.deletedAt) continue;
+      const existing = eventMap.get(er.event.id);
+      if (existing) {
+        existing.roles.push(er.role);
+      } else {
+        eventMap.set(er.event.id, {
+          roles: [er.role],
+          assignedAt: er.assignedAt,
+          event: er.event,
+        });
+      }
+    }
+
+    const result = Array.from(eventMap.values()).map((entry) => ({
+      role: entry.roles.join(", "),
+      roles: entry.roles,
+      assignedAt: entry.assignedAt,
+      event: entry.event,
+    }));
 
     return NextResponse.json(result);
   } catch (error) {
