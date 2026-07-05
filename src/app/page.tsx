@@ -1,8 +1,43 @@
 import Link from "next/link";
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 
 export default function HomePage() {
   return (
     <main className="flex-1">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 border-b border-gray-800 bg-black/80 backdrop-blur-sm">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+          <Link href="/" className="text-lg font-bold text-white">
+            Hack<span className="text-orange-400">Aegis</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            <SignedIn>
+              <Link
+                href="/dashboard/participant"
+                className="text-sm text-gray-300 hover:text-white transition-colors"
+              >
+                Dashboard
+              </Link>
+              <UserButton />
+            </SignedIn>
+            <SignedOut>
+              <Link
+                href="/sign-in"
+                className="text-sm text-gray-300 hover:text-white transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/sign-up"
+                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-400 transition-colors"
+              >
+                Sign Up
+              </Link>
+            </SignedOut>
+          </div>
+        </div>
+      </nav>
+
       {/* Hero */}
       <section className="relative overflow-hidden bg-black text-white">
         <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 via-transparent to-purple-900/20" />
