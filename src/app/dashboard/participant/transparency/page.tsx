@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { users, teamMembers, submissions, evaluations, evaluationScores } from "@/lib/db/schema";
+import { users, teamMembers, submissions, evaluations, evaluationScores, eventRoles } from "@/lib/db/schema";
+import Link from "next/link";
 import { eq, and } from "drizzle-orm";
 import { EVALUATION_CRITERIA } from "@/lib/constants/rubric";
 
@@ -16,6 +17,25 @@ export default async function TransparencyPage() {
   });
 
   if (!user) redirect("/sign-in");
+
+  // Check if user is registered as a participant for any event
+  const participantRole = await db.query.eventRoles.findFirst({
+    where: and(eq(eventRoles.userId, user.id), eq(eventRoles.role, "participant")),
+  });
+
+  if (!participantRole) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-white">Registration Required</h2>
+          <p className="mt-2 text-gray-400">Register for an event to view your evaluation status.</p>
+          <Link href="/dashboard/participant/event" className="mt-4 inline-block rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-400">
+            Browse Events
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Find user's team membership
   const membership = await db.query.teamMembers.findFirst({

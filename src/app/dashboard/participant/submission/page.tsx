@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface CurrentEvent {
   id: string;
@@ -10,8 +10,8 @@ interface CurrentEvent {
 }
 
 export default function SubmissionPage() {
-  const router = useRouter();
   const [currentEvent, setCurrentEvent] = useState<CurrentEvent | null>(null);
+  const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [eventLoading, setEventLoading] = useState(true);
   const [eventError, setEventError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,6 +28,15 @@ export default function SubmissionPage() {
         }
         const event = await res.json();
         setCurrentEvent(event);
+
+        // Check registration status
+        const regRes = await fetch(`/api/events/${event.id}/registration-status`);
+        if (!regRes.ok) {
+          setIsRegistered(false);
+          return;
+        }
+        const regData = await regRes.json();
+        setIsRegistered(regData.registered);
       } catch {
         setEventError("Failed to load event. Please try again.");
       } finally {
@@ -88,6 +97,20 @@ export default function SubmissionPage() {
     return (
       <div className="rounded-lg bg-red-900/50 border border-red-700 p-4 text-sm text-red-300">
         {eventError}
+      </div>
+    );
+  }
+
+  if (!isRegistered) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-white">Registration Required</h2>
+          <p className="mt-2 text-gray-400">You need to register for this event before submitting.</p>
+          <Link href="/dashboard/participant/event" className="mt-4 inline-block rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-400">
+            Browse Events
+          </Link>
+        </div>
       </div>
     );
   }

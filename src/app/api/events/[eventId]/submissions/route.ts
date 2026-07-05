@@ -121,7 +121,7 @@ export async function POST(
       return NextResponse.json(updated);
     }
 
-    // Create new submission
+    // Create new submission (handle duplicate race with onConflictDoUpdate)
     const [newSubmission] = await db
       .insert(submissions)
       .values({
@@ -130,6 +130,15 @@ export async function POST(
         ...parsed.data,
         status: "submitted",
         submittedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [submissions.teamId, submissions.eventId],
+        set: {
+          ...parsed.data,
+          status: "submitted",
+          submittedAt: new Date(),
+          updatedAt: new Date(),
+        },
       })
       .returning();
 
@@ -148,6 +157,7 @@ export async function POST(
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    throw error;
+    console.error("Submission error:", error);
+    return NextResponse.json({ error: "Submission failed. Please try again." }, { status: 500 });
   }
 }

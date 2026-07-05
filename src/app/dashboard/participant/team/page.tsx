@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface Team {
   id: string;
@@ -22,6 +23,7 @@ export default function TeamPage() {
   const router = useRouter();
   const [team, setTeam] = useState<Team | null>(null);
   const [currentEvent, setCurrentEvent] = useState<CurrentEvent | null>(null);
+  const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"view" | "create" | "join">("view");
@@ -41,6 +43,20 @@ export default function TeamPage() {
       }
       const event = await eventRes.json();
       setCurrentEvent(event);
+
+      // Check registration status
+      const regRes = await fetch(`/api/events/${event.id}/registration-status`);
+      if (!regRes.ok) {
+        setIsRegistered(false);
+        setLoading(false);
+        return;
+      }
+      const regData = await regRes.json();
+      setIsRegistered(regData.registered);
+      if (!regData.registered) {
+        setLoading(false);
+        return;
+      }
 
       // Fetch user info
       const userRes = await fetch("/api/users/me");
@@ -128,11 +144,27 @@ export default function TeamPage() {
       return;
     }
 
+    // Refetch to get full team with members
+    await fetchInitialData();
     router.refresh();
   }
 
   if (loading) {
     return <p className="text-gray-400">Loading...</p>;
+  }
+
+  if (isRegistered === false) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-white">Registration Required</h2>
+          <p className="mt-2 text-gray-400">You need to register for this event first.</p>
+          <Link href="/dashboard/participant/event" className="mt-4 inline-block rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-400">
+            Browse Events
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   if (team) {

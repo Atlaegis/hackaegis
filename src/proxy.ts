@@ -10,7 +10,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/payments/webhook",
 ]);
 
-export default clerkMiddleware(async (auth, request) => {
+export const proxy = clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {
     await auth.protect();
   }

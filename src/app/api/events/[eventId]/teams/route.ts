@@ -24,6 +24,7 @@ export async function GET(
               columns: {
                 id: true,
                 fullName: true,
+                email: true,
               },
             },
           },
@@ -59,14 +60,16 @@ export async function POST(
     }
 
     // Check if user already has a team in this event
-    const existingMembership = await db.query.teamMembers.findFirst({
+    const existingMemberships = await db.query.teamMembers.findMany({
       where: eq(teamMembers.userId, user.id),
-      with: {
-        team: true,
-      },
+      with: { team: true },
     });
 
-    if (existingMembership && existingMembership.team.eventId === eventId) {
+    const alreadyInEvent = existingMemberships.some(
+      (m) => m.team.eventId === eventId && !m.team.deletedAt
+    );
+
+    if (alreadyInEvent) {
       return NextResponse.json(
         { error: "You are already in a team for this event" },
         { status: 400 }
@@ -120,7 +123,21 @@ export async function POST(
       newState: { name: newTeam.name, inviteCode },
     });
 
-    return NextResponse.json(newTeam, { status: 201 });
+    // Fetch full team with members before returning
+    const fullTeam = await db.query.teams.findFirst({
+      where: eq(teams.id, newTeam.id),
+      with: {
+        members: {
+          with: {
+            user: {
+              columns: { id: true, fullName: true, email: true },
+            },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(fullTeam, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

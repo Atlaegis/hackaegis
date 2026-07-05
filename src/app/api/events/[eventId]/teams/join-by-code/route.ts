@@ -43,12 +43,16 @@ export async function POST(
     }
 
     // Check if user already in a team for this event
-    const existingMembership = await db.query.teamMembers.findFirst({
+    const existingMemberships = await db.query.teamMembers.findMany({
       where: eq(teamMembers.userId, user.id),
       with: { team: true },
     });
 
-    if (existingMembership && existingMembership.team.eventId === eventId) {
+    const alreadyInEvent = existingMemberships.some(
+      (m) => m.team.eventId === eventId && !m.team.deletedAt
+    );
+
+    if (alreadyInEvent) {
       return NextResponse.json(
         { error: "You are already in a team for this event" },
         { status: 400 }
