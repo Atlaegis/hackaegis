@@ -11,20 +11,33 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
-  const { eventId } = await params;
+  try {
+    await getCurrentUser();
+    const { eventId } = await params;
 
-  const allTeams = await db.query.teams.findMany({
-    where: and(eq(teams.eventId, eventId), isNull(teams.deletedAt)),
-    with: {
-      members: {
-        with: {
-          user: true,
+    const allTeams = await db.query.teams.findMany({
+      where: and(eq(teams.eventId, eventId), isNull(teams.deletedAt)),
+      with: {
+        members: {
+          with: {
+            user: {
+              columns: {
+                id: true,
+                fullName: true,
+              },
+            },
+          },
         },
       },
-    },
-  });
+    });
 
-  return NextResponse.json(allTeams);
+    return NextResponse.json(allTeams);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw error;
+  }
 }
 
 export async function POST(

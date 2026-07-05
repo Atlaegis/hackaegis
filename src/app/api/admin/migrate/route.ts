@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import { requireSuperAdmin, handleAuthError } from "@/lib/auth/rbac";
 
 export async function POST() {
   try {
+    await requireSuperAdmin();
+
     const sql = neon(process.env.DATABASE_URL!);
 
     // Run migration: add is_super_admin column if it doesn't exist
@@ -10,6 +13,6 @@ export async function POST() {
 
     return NextResponse.json({ success: true, message: "Migration completed" });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return handleAuthError(error);
   }
 }

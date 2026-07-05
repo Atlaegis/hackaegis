@@ -7,7 +7,6 @@ import Link from "next/link";
 interface EventRole {
   id: string;
   eventId: string;
-  eventTitle: string;
   role: string;
   assignedAt: string;
 }
@@ -43,20 +42,26 @@ export default function UserRolesPage() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [rolesRes, eventsRes] = await Promise.all([
+      const [rolesRes, eventsRes, userRes] = await Promise.all([
         fetch(`/api/admin/users/${userId}/roles`),
         fetch("/api/events/current"),
+        fetch(`/api/admin/users/${userId}`),
       ]);
 
       if (rolesRes.ok) {
         const json = await rolesRes.json();
-        setUserInfo(json.user);
-        setRoles(json.roles);
+        setRoles(json.roles || []);
+      }
+
+      if (userRes.ok) {
+        const json = await userRes.json();
+        setUserInfo(json.user || json);
       }
 
       if (eventsRes.ok) {
         const json = await eventsRes.json();
-        setEvents(json.events || []);
+        // /api/events/current returns a single event object, not { events: [...] }
+        setEvents([json]);
       }
     } finally {
       setLoading(false);
@@ -88,11 +93,11 @@ export default function UserRolesPage() {
     }
   }
 
-  async function removeRole(roleId: string) {
+  async function removeRole(role: EventRole) {
     const res = await fetch(`/api/admin/users/${userId}/roles`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roleId }),
+      body: JSON.stringify({ eventId: role.eventId, role: role.role }),
     });
 
     if (res.ok) {
@@ -126,12 +131,18 @@ export default function UserRolesPage() {
       </div>
 
       {/* User Info */}
-      {userInfo && (
+      {userInfo ? (
         <div className="mt-6 rounded-lg border border-gray-800 bg-gray-900/50 p-6">
           <h2 className="text-lg font-semibold text-white">
             {userInfo.fullName}
           </h2>
           <p className="mt-1 text-sm text-gray-400">{userInfo.email}</p>
+        </div>
+      ) : (
+        <div className="mt-6 rounded-lg border border-gray-800 bg-gray-900/50 p-6">
+          <h2 className="text-lg font-semibold text-white">
+            User: {userId.slice(0, 8)}...
+          </h2>
         </div>
       )}
 
@@ -163,7 +174,7 @@ export default function UserRolesPage() {
                 {roles.map((role) => (
                   <tr key={role.id} className="hover:bg-gray-900/50">
                     <td className="px-4 py-3 text-white">
-                      {role.eventTitle}
+                      {role.eventId.slice(0, 8)}...
                     </td>
                     <td className="px-4 py-3">
                       <span className="rounded-full bg-orange-500/10 px-3 py-1 text-xs font-medium text-orange-400">
@@ -175,7 +186,7 @@ export default function UserRolesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => removeRole(role.id)}
+                        onClick={() => removeRole(role)}
                         className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500 transition-colors"
                       >
                         Remove

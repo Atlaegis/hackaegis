@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { evaluations, evaluationScores, submissions, transparencyLogs } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth/rbac";
 
 export async function GET(
@@ -62,20 +62,24 @@ export async function GET(
       })),
     }));
 
-    // Get audit trail for this submission
-    const auditTrail = await db.query.transparencyLogs.findMany({
-      where: and(
-        eq(transparencyLogs.entityType, "evaluation"),
-        eq(transparencyLogs.entityId, submissionId)
-      ),
-      orderBy: [desc(transparencyLogs.createdAt)],
-      columns: {
-        action: true,
-        actorRole: true,
-        createdAt: true,
-        reason: true,
-      },
-    });
+    // Get audit trail using evaluation IDs (logs are stored with evaluation ID as entityId)
+    const evalIds = completedEvals.map(e => e.id);
+
+    const auditTrail = evalIds.length > 0
+      ? await db.query.transparencyLogs.findMany({
+          where: and(
+            eq(transparencyLogs.entityType, "evaluation"),
+            inArray(transparencyLogs.entityId, evalIds)
+          ),
+          orderBy: [desc(transparencyLogs.createdAt)],
+          columns: {
+            action: true,
+            actorRole: true,
+            createdAt: true,
+            reason: true,
+          },
+        })
+      : [];
 
     return NextResponse.json({
       submission: {

@@ -2,14 +2,22 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { users, events, eventRoles } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
+import { requireSuperAdmin, handleAuthError } from "@/lib/auth/rbac";
 
 // One-time setup endpoint: makes the current logged-in user an admin + organizer
-// for the published event. Remove this endpoint after initial setup.
+// for the published event. Only works without auth when zero super admins exist.
 export async function POST() {
+  try {
   const { userId: clerkId } = await auth();
   if (!clerkId) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+  }
+
+  // Check if any super admin already exists
+  const existingSuperAdmins = await db.select({count: count()}).from(users).where(eq(users.isSuperAdmin, true));
+  if (Number(existingSuperAdmins[0].count) > 0) {
+    await requireSuperAdmin(); // Only existing super admin can promote others
   }
 
   const user = await db.query.users.findFirst({
@@ -77,4 +85,7 @@ export async function POST() {
     eventId: event.id,
     eventTitle: event.title,
   });
+  } catch (error) {
+    return handleAuthError(error);
+  }
 }

@@ -15,7 +15,7 @@ export default async function ParticipantDashboard() {
     where: eq(users.clerkId, clerkId),
   });
 
-  if (!user) redirect("/sign-in");
+  if (!user) redirect("/onboarding");
   if (!user.onboardingCompleted) redirect("/onboarding");
 
   return (

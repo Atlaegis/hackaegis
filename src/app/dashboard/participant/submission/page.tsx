@@ -1,19 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
+interface CurrentEvent {
+  id: string;
+  title: string;
+  slug: string;
+}
 
 export default function SubmissionPage() {
   const router = useRouter();
+  const [currentEvent, setCurrentEvent] = useState<CurrentEvent | null>(null);
+  const [eventLoading, setEventLoading] = useState(true);
+  const [eventError, setEventError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    async function fetchEvent() {
+      try {
+        const res = await fetch("/api/events/current");
+        if (!res.ok) {
+          setEventError("No active event found. Please contact an organizer.");
+          return;
+        }
+        const event = await res.json();
+        setCurrentEvent(event);
+      } catch {
+        setEventError("Failed to load event. Please try again.");
+      } finally {
+        setEventLoading(false);
+      }
+    }
+    fetchEvent();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError("");
     setSuccess(false);
+
+    if (!currentEvent) {
+      setError("No active event found.");
+      setLoading(false);
+      return;
+    }
 
     const formData = new FormData(e.currentTarget);
     const data = {
@@ -26,7 +60,7 @@ export default function SubmissionPage() {
     };
 
     try {
-      const res = await fetch("/api/events/default/submissions", {
+      const res = await fetch(`/api/events/${currentEvent.id}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -44,6 +78,18 @@ export default function SubmissionPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (eventLoading) {
+    return <p className="text-gray-400">Loading event...</p>;
+  }
+
+  if (eventError) {
+    return (
+      <div className="rounded-lg bg-red-900/50 border border-red-700 p-4 text-sm text-red-300">
+        {eventError}
+      </div>
+    );
   }
 
   return (

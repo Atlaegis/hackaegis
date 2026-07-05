@@ -43,9 +43,30 @@ export default function TeamPage() {
       setCurrentEvent(event);
 
       // Fetch user info
-      const res = await fetch("/api/users/me");
-      if (!res.ok) return;
-      // For MVP, we'll show team creation/join UI
+      const userRes = await fetch("/api/users/me");
+      if (!userRes.ok) {
+        setLoading(false);
+        return;
+      }
+      const userData = await userRes.json();
+      const currentUserId = userData.id || userData.user?.id;
+
+      // Fetch teams and find the user's team
+      if (currentUserId) {
+        const teamsRes = await fetch(`/api/events/${event.id}/teams`);
+        if (teamsRes.ok) {
+          const teamsData = await teamsRes.json();
+          const teams = Array.isArray(teamsData) ? teamsData : teamsData.teams || [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const userTeam = teams.find((t: any) =>
+            t.members?.some((m: any) => m.userId === currentUserId || m.id === currentUserId)
+          );
+          if (userTeam) {
+            setTeam(userTeam);
+          }
+        }
+      }
+
       setLoading(false);
     } catch {
       setLoading(false);

@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { users, eventRoles } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 export type Role = "participant" | "organizer" | "judge" | "admin";
 
@@ -22,7 +22,7 @@ export async function getCurrentUser() {
   if (!clerkId) throw new UnauthorizedError();
 
   const user = await db.query.users.findFirst({
-    where: eq(users.clerkId, clerkId),
+    where: and(eq(users.clerkId, clerkId), isNull(users.deletedAt)),
   });
 
   if (!user) throw new UnauthorizedError();

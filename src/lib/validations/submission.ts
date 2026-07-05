@@ -6,10 +6,18 @@ export const submissionSchema = z.object({
   githubUrl: z
     .string()
     .url("Invalid URL")
-    .refine((url) => url.includes("github.com"), "Must be a GitHub URL"),
-  deploymentUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
-  demoVideoUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
-  pptUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
+    .refine(
+      (url) => {
+        try {
+          const parsed = new URL(url);
+          return parsed.hostname === "github.com" || parsed.hostname.endsWith(".github.com");
+        } catch { return false; }
+      },
+      "Must be a GitHub URL"
+    ),
+  deploymentUrl: z.string().url("Invalid URL").optional().or(z.literal("").transform(() => undefined)),
+  demoVideoUrl: z.string().url("Invalid URL").optional().or(z.literal("").transform(() => undefined)),
+  pptUrl: z.string().url("Invalid URL").optional().or(z.literal("").transform(() => undefined)),
 });
 
 export type SubmissionInput = z.infer<typeof submissionSchema>;

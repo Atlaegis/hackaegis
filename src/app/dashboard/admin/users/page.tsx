@@ -15,9 +15,12 @@ interface User {
 
 interface UsersResponse {
   users: User[];
-  total: number;
-  page: number;
-  limit: number;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export default function AdminUsersPage() {
@@ -51,7 +54,7 @@ export default function AdminUsersPage() {
   }
 
   async function toggleSuperAdmin(userId: string, currentStatus: boolean) {
-    const res = await fetch(`/api/admin/users/${userId}/super-admin`, {
+    const res = await fetch(`/api/admin/users/${userId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isSuperAdmin: !currentStatus }),
@@ -61,7 +64,7 @@ export default function AdminUsersPage() {
     }
   }
 
-  const totalPages = data ? Math.ceil(data.total / limit) : 0;
+  const totalPages = data ? data.pagination.totalPages : 0;
 
   return (
     <div>
@@ -69,7 +72,7 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">User Management</h1>
           <p className="mt-1 text-gray-400">
-            {data ? `${data.total} total users` : "Loading..."}
+            {data ? `${data.pagination.total} total users` : "Loading..."}
           </p>
         </div>
         <Link

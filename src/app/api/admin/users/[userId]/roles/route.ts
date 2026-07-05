@@ -50,6 +50,11 @@ export async function POST(
       );
     }
 
+    const validRoles = ["participant", "organizer", "judge", "admin"];
+    if (!validRoles.includes(role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+
     // Only super admin can assign/remove "admin" role
     if (role === "admin" && level !== "super") {
       return NextResponse.json(
@@ -115,6 +120,11 @@ export async function DELETE(
         { error: "eventId and role are required" },
         { status: 400 }
       );
+    }
+
+    const validRoles = ["participant", "organizer", "judge", "admin"];
+    if (!validRoles.includes(role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
     // Only super admin can remove "admin" role

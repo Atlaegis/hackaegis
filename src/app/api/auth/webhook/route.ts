@@ -14,6 +14,10 @@ interface ClerkUserData {
 }
 
 export async function POST(request: Request) {
+  if (!process.env.CLERK_WEBHOOK_SECRET) {
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
+  }
+
   const headerPayload = await headers();
   const svixId = headerPayload.get("svix-id");
   const svixTimestamp = headerPayload.get("svix-timestamp");
@@ -26,7 +30,7 @@ export async function POST(request: Request) {
   const payload = await request.json();
   const body = JSON.stringify(payload);
 
-  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!);
+  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
   let event: { type: string; data: ClerkUserData };
 
   try {
@@ -52,7 +56,7 @@ export async function POST(request: Request) {
       email,
       fullName,
       avatarUrl: data.image_url,
-    });
+    }).onConflictDoNothing();
   }
 
   if (type === "user.updated") {

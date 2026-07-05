@@ -170,18 +170,18 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
   return <span className="rounded-full bg-gray-500/10 px-3 py-1 text-xs font-medium text-gray-400">Pending</span>;
 }
 
-function FeedbackSection({ title, content, color }: { title: string; content: string | null; color: string }) {
+function FeedbackSection({ title, content, color }: { title: string; content: string | null; color: "green" | "red" | "blue" }) {
   if (!content) return null;
-  const colors = {
-    green: "border-green-800 bg-green-900/20 text-green-400 text-green-300",
-    red: "border-red-800 bg-red-900/20 text-red-400 text-red-300",
-    blue: "border-blue-800 bg-blue-900/20 text-blue-400 text-blue-300",
+  const styles = {
+    green: { container: "border-green-800 bg-green-900/20", title: "text-green-400", text: "text-green-300" },
+    red: { container: "border-red-800 bg-red-900/20", title: "text-red-400", text: "text-red-300" },
+    blue: { container: "border-blue-800 bg-blue-900/20", title: "text-blue-400", text: "text-blue-300" },
   };
-  const c = colors[color as keyof typeof colors];
+  const s = styles[color];
   return (
-    <div className={`rounded-lg border p-4 ${c.split(" ").slice(0, 2).join(" ")}`}>
-      <h5 className={`text-sm font-semibold ${c.split(" ")[2]}`}>{title}</h5>
-      <p className={`mt-1 text-sm ${c.split(" ")[3]}`}>{content}</p>
+    <div className={`rounded-lg border p-4 ${s.container}`}>
+      <h5 className={`text-sm font-semibold ${s.title}`}>{title}</h5>
+      <p className={`mt-1 text-sm ${s.text}`}>{content}</p>
     </div>
   );
 }

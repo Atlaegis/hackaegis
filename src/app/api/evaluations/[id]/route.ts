@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { evaluations, evaluationScores } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { getCurrentUser } from "@/lib/auth/rbac";
+import { evaluations, evaluationScores, eventRoles } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
+import { getCurrentUser, handleAuthError } from "@/lib/auth/rbac";
 import { evaluationSchema } from "@/lib/validations/evaluation";
 import { logTransparencyEvent } from "@/lib/services/audit";
 import { EVALUATION_CRITERIA } from "@/lib/constants/rubric";
@@ -11,27 +11,62 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
+  try {
+    const user = await getCurrentUser();
+    const { id } = await params;
 
-  const evaluation = await db.query.evaluations.findFirst({
-    where: eq(evaluations.id, id),
-    with: {
-      scores: true,
-      submission: {
-        with: {
-          team: {
-            with: { members: { with: { user: true } } },
+    const evaluation = await db.query.evaluations.findFirst({
+      where: eq(evaluations.id, id),
+      with: {
+        scores: true,
+        submission: {
+          with: {
+            team: {
+              with: { members: { with: { user: true } } },
+            },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!evaluation) {
-    return NextResponse.json({ error: "Evaluation not found" }, { status: 404 });
+    if (!evaluation) {
+      return NextResponse.json({ error: "Evaluation not found" }, { status: 404 });
+    }
+
+    // Check access: assigned judge, team member, organizer, or admin
+    const isJudge = evaluation.judgeId === user.id;
+    const isTeamMember = evaluation.submission.team.members.some(
+      (m) => m.userId === user.id
+    );
+    const isAdminOrOrganizer = user.isSuperAdmin || !!(await db.query.eventRoles.findFirst({
+      where: and(
+        eq(eventRoles.eventId, evaluation.eventId),
+        eq(eventRoles.userId, user.id),
+        eq(eventRoles.role, "organizer")
+      ),
+    })) || !!(await db.query.eventRoles.findFirst({
+      where: and(
+        eq(eventRoles.eventId, evaluation.eventId),
+        eq(eventRoles.userId, user.id),
+        eq(eventRoles.role, "admin")
+      ),
+    }));
+
+    if (!isJudge && !isTeamMember && !isAdminOrOrganizer) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Strip internalNotes unless user is the judge or admin/organizer
+    const canSeeInternalNotes = isJudge || isAdminOrOrganizer;
+    const response = {
+      ...evaluation,
+      internalNotes: canSeeInternalNotes ? evaluation.internalNotes : undefined,
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    return handleAuthError(error);
   }
-
-  return NextResponse.json(evaluation);
 }
 
 export async function PATCH(

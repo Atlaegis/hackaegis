@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { organizations, events, problemStatements } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { requireSuperAdmin, handleAuthError } from "@/lib/auth/rbac";
 
 export async function POST() {
   try {
+    await requireSuperAdmin();
+
     // 1. Insert organization
     const [org] = await db
       .insert(organizations)
@@ -74,6 +77,6 @@ export async function POST() {
 
     return NextResponse.json({ success: true, orgId, eventId, problemStatements: problems.length });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return handleAuthError(error);
   }
 }
