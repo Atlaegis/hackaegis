@@ -18,22 +18,22 @@ export default function OnboardingPage() {
     const formData = new FormData(e.currentTarget);
     const data = {
       fullName: formData.get("fullName") as string,
-      phone: formData.get("phone") as string,
+      phone: (formData.get("phone") as string) || "",
       college: formData.get("college") as string,
-      university: formData.get("university") as string,
-      degree: formData.get("degree") as string,
-      branch: formData.get("branch") as string,
-      graduationYear: formData.get("graduationYear")
+      university: (formData.get("university") as string) || "",
+      degree: (formData.get("degree") as string) || "",
+      branch: (formData.get("branch") as string) || "",
+      graduationYear: (formData.get("graduationYear") as string)
         ? Number(formData.get("graduationYear"))
         : undefined,
-      githubUrl: formData.get("githubUrl") as string,
-      linkedinUrl: formData.get("linkedinUrl") as string,
-      skills: (formData.get("skills") as string)
+      githubUrl: (formData.get("githubUrl") as string) || "",
+      linkedinUrl: (formData.get("linkedinUrl") as string) || "",
+      skills: ((formData.get("skills") as string) || "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
-      city: formData.get("city") as string,
-      state: formData.get("state") as string,
+      city: (formData.get("city") as string) || "",
+      state: (formData.get("state") as string) || "",
     };
 
     try {
