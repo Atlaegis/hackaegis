@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm run build:vercel",
+  "outputDirectory": "artifacts/hackforge/dist/public",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "artifacts/api-server/dist-vercel/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" }
+  ]
+}

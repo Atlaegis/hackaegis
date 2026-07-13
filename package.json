@@ -5,6 +5,7 @@
   "scripts": {
     "preinstall": "node ./scripts/preinstall.cjs",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "build:vercel": "node artifacts/api-server/build-vercel.mjs && cd artifacts/hackforge && npx vite build --config vite.config.ts",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
