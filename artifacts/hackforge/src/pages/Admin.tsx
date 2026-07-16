@@ -362,7 +362,7 @@ function RegistrationsTab() {
     approved: "bg-chart-3/10 text-chart-3 border-chart-3/30",
     rejected: "bg-destructive/10 text-destructive border-destructive/30",
   };
-  const payModeLabel: Record<string, string> = { offline: "Offline/Cash", upi: "UPI", online: "Online" };
+  const payModeLabel: Record<string, string> = { upi: "UPI", online: "Online Payment" };
 
   return (
     <div className="space-y-6">
@@ -1068,7 +1068,7 @@ function LiveTab() {
             <CardContent className="space-y-3">
               <div>
                 <label className="text-xs text-muted-foreground">Jitsi Room Name</label>
-                <Input value={meetForm.jitsiRoom} onChange={(e) => setMeetForm((p) => ({ ...p, jitsiRoom: e.target.value }))} placeholder="HackAegis-2025-Finals" className="mt-1 font-mono" />
+                <Input value={meetForm.jitsiRoom} onChange={(e) => setMeetForm((p) => ({ ...p, jitsiRoom: e.target.value }))} placeholder="HackAegis-2026-Finals" className="mt-1 font-mono" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Meet Mode</label>
