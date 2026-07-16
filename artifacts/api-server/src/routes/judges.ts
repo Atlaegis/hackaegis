@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, judgeScoresTable, teamsTable, submissionsTable, sessionsTable, eventConfigTable, participationCodesTable, adminLogsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, judgeScoresTable, teamsTable, submissionsTable, sessionsTable, eventConfigTable, participationCodesTable, adminLogsTable, judgeTeamLocksTable, judgeAnnouncementsTable, teamAttendanceTable } from "@workspace/db";
+import { eq, and, desc, isNull } from "drizzle-orm";
 import { extractToken, getSessionFromToken } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -29,64 +29,319 @@ async function requireAdminOrJudge(req: Request, res: Response): Promise<typeof 
   return session;
 }
 
-// Get judge profile from session
+const SCORING_CRITERIA = [
+  { key: "innovationProblemSolving", label: "Innovation & Problem Solving", max: 20, weight: 20 },
+  { key: "technicalExcellence", label: "Technical Excellence", max: 25, weight: 25 },
+  { key: "realWorldImpact", label: "Real-World Impact & Scalability", max: 20, weight: 20 },
+  { key: "uiUxExperience", label: "UI/UX & Product Experience", max: 10, weight: 10 },
+  { key: "presentationCommunication", label: "Presentation & Communication", max: 10, weight: 10 },
+  { key: "completionFunctionality", label: "Completion & Functionality", max: 10, weight: 10 },
+  { key: "teamworkManagement", label: "Teamwork & Project Management", max: 5, weight: 5 },
+];
+
+async function getJudgeStats(codeId: number) {
+  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, codeId));
+  if (!code) return null;
+  const allTeams = await db.select().from(teamsTable);
+  const assignedTeams = code.domain ? allTeams.filter((t) => t.domain === code.domain) : allTeams;
+  const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, codeId));
+  return { code, assignedTeams: assignedTeams.length, completedEvaluations: scores.length, pendingEvaluations: Math.max(0, assignedTeams.length - scores.length) };
+}
+
+// Get judge profile with stats
 router.get("/judges/me", async (req: Request, res: Response) => {
   const session = await requireJudge(req, res);
   if (!session) return;
 
-  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
-  if (!code) {
+  const stats = await getJudgeStats(session.codeId);
+  if (!stats) {
     res.status(404).json({ error: "not_found", message: "Judge code not found" });
     return;
   }
 
-  res.json({ id: session.codeId, code: code.code, label: code.label ?? code.code, isJudge: true });
+  res.json({
+    id: session.codeId,
+    code: stats.code.code,
+    label: stats.code.label ?? stats.code.code,
+    domain: stats.code.domain ?? null,
+    isJudge: true,
+    assignedTeams: stats.assignedTeams,
+    completedEvaluations: stats.completedEvaluations,
+    pendingEvaluations: stats.pendingEvaluations,
+  });
 });
 
-// Get all teams with submissions and this judge's scores
+// Get judge dashboard data (home page)
+router.get("/judges/dashboard", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+
+  const stats = await getJudgeStats(session.codeId);
+  const announcements = await db.select().from(judgeAnnouncementsTable).orderBy(desc(judgeAnnouncementsTable.createdAt)).limit(10);
+
+  res.json({
+    announcements,
+    scoringGuidelines: { criteria: SCORING_CRITERIA, totalPoints: 100 },
+    judgeStats: {
+      assignedTeams: stats?.assignedTeams ?? 0,
+      completedEvaluations: stats?.completedEvaluations ?? 0,
+      pendingEvaluations: stats?.pendingEvaluations ?? 0,
+    },
+  });
+});
+
+// Get all teams with submissions, scores, lock/disqualification info
 router.get("/judges/teams", async (req: Request, res: Response) => {
   const session = await requireAdminOrJudge(req, res);
   if (!session) return;
 
   const judgeCodeId = session.codeId;
 
-  const teams = await db.select().from(teamsTable).orderBy(teamsTable.name);
+  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, judgeCodeId));
+  const allTeams = await db.select().from(teamsTable).orderBy(teamsTable.name);
+  const teams = code?.domain
+    ? allTeams.filter((t) => t.domain === code.domain)
+    : allTeams;
+
   const submissions = await db.select().from(submissionsTable);
   const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, judgeCodeId));
+  const attendance = await db.select().from(teamAttendanceTable).orderBy(desc(teamAttendanceTable.createdAt));
+
+  const [activeLock] = await db.select().from(judgeTeamLocksTable)
+    .where(and(eq(judgeTeamLocksTable.judgeId, judgeCodeId), isNull(judgeTeamLocksTable.unlockedAt)));
 
   const submissionMap = new Map(submissions.map((s) => [s.teamId, s]));
   const scoreMap = new Map(scores.map((s) => [s.teamId, s]));
+  // Use most recent attendance record per team (first in desc-ordered array wins)
+  const attendanceMap = new Map<number, typeof attendance[number]>();
+  for (const a of attendance) {
+    if (!attendanceMap.has(a.teamId)) attendanceMap.set(a.teamId, a);
+  }
 
   const result = teams.map((team) => {
     const sub = submissionMap.get(team.id);
     const score = scoreMap.get(team.id);
+    const att = attendanceMap.get(team.id);
     return {
       id: team.id,
       name: team.name,
       projectTitle: team.projectTitle,
       description: team.description ?? null,
+      domain: team.domain ?? null,
       githubUrl: sub?.githubUrl ?? team.githubUrl ?? null,
       demoUrl: sub?.demoUrl ?? null,
       slidesUrl: sub?.slidesUrl ?? null,
       submissionDescription: sub?.description ?? null,
       hasSubmission: !!sub,
+      isDisqualified: team.status === "disqualified",
+      isLate: att?.isLate ?? false,
+      minutesLate: att?.minutesLate ?? 0,
       judgeScore: score
-        ? { score: score.score, innovation: score.innovation ?? null, execution: score.execution ?? null, presentation: score.presentation ?? null, feedback: score.feedback ?? null }
+        ? {
+            score: score.score,
+            totalScore: score.totalScore ?? null,
+            innovationProblemSolving: score.innovationProblemSolving ?? null,
+            technicalExcellence: score.technicalExcellence ?? null,
+            realWorldImpact: score.realWorldImpact ?? null,
+            uiUxExperience: score.uiUxExperience ?? null,
+            presentationCommunication: score.presentationCommunication ?? null,
+            completionFunctionality: score.completionFunctionality ?? null,
+            teamworkManagement: score.teamworkManagement ?? null,
+            feedback: score.feedback ?? null,
+          }
         : null,
     };
   });
 
-  res.json(result);
+  res.json({ teams: result, lockedTeamId: activeLock?.teamId ?? null });
 });
 
-// Submit / update a score for a team
+// Submit / update a score for a team (new 7-criteria system)
 router.post("/judges/scores", async (req: Request, res: Response) => {
   const session = await requireJudge(req, res);
   if (!session) return;
 
-  const { teamId, score, innovation, execution, presentation, feedback } = req.body ?? {};
-  if (typeof teamId !== "number" || typeof score !== "number" || score < 0 || score > 10) {
-    res.status(400).json({ error: "validation_error", message: "teamId and score (0–10) required" });
+  const { teamId, innovationProblemSolving, technicalExcellence, realWorldImpact, uiUxExperience, presentationCommunication, completionFunctionality, teamworkManagement, feedback } = req.body ?? {};
+
+  if (typeof teamId !== "number") {
+    res.status(400).json({ error: "validation_error", message: "teamId is required" });
+    return;
+  }
+
+  const criteriaValues: Record<string, number> = { innovationProblemSolving, technicalExcellence, realWorldImpact, uiUxExperience, presentationCommunication, completionFunctionality, teamworkManagement };
+  for (const c of SCORING_CRITERIA) {
+    const val = criteriaValues[c.key];
+    if (typeof val !== "number" || val < 0 || val > c.max) {
+      res.status(400).json({ error: "validation_error", message: `${c.label} must be 0–${c.max}` });
+      return;
+    }
+  }
+
+  const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId));
+  if (!team) {
+    res.status(404).json({ error: "not_found", message: "Team not found" });
+    return;
+  }
+
+  if (team.status === "disqualified") {
+    res.status(400).json({ error: "disqualified", message: "Cannot score a disqualified team" });
+    return;
+  }
+
+  const judgeId = session.codeId;
+  const totalScore = innovationProblemSolving + technicalExcellence + realWorldImpact + uiUxExperience + presentationCommunication + completionFunctionality + teamworkManagement;
+
+  const values = {
+    score: totalScore / 10,
+    innovationProblemSolving,
+    technicalExcellence,
+    realWorldImpact,
+    uiUxExperience,
+    presentationCommunication,
+    completionFunctionality,
+    teamworkManagement,
+    totalScore,
+    feedback: feedback ?? null,
+    updatedAt: new Date(),
+  };
+
+  // Use transaction to prevent TOCTOU race on lock check + score write
+  let saved: typeof judgeScoresTable.$inferSelect | { error: string };
+  try {
+    saved = await db.transaction(async (tx) => {
+      const [activeLock] = await tx.select().from(judgeTeamLocksTable)
+        .where(and(eq(judgeTeamLocksTable.judgeId, judgeId), isNull(judgeTeamLocksTable.unlockedAt)));
+      if (!activeLock || activeLock.teamId !== teamId) {
+        return { error: "lock_required" } as const;
+      }
+
+      const [existing] = await tx.select().from(judgeScoresTable)
+        .where(and(eq(judgeScoresTable.judgeId, judgeId), eq(judgeScoresTable.teamId, teamId)));
+
+      if (existing) {
+        const [row] = await tx.update(judgeScoresTable).set(values).where(eq(judgeScoresTable.id, existing.id)).returning();
+        return row;
+      } else {
+        const [row] = await tx.insert(judgeScoresTable).values({ judgeId, teamId, ...values, createdAt: new Date() }).returning();
+        return row;
+      }
+    });
+  } catch {
+    res.status(500).json({ error: "server_error", message: "Failed to save score" });
+    return;
+  }
+
+  if ("error" in saved) {
+    res.status(400).json({ error: "lock_required", message: "You must lock this team before scoring." });
+    return;
+  }
+
+  await logAction("judge_scored", `Judge (code ${session.codeId}) scored team ${team.name}: ${totalScore}/100`);
+  res.json({ id: saved.id, judgeId: saved.judgeId, teamId: saved.teamId, totalScore: saved.totalScore, feedback: saved.feedback });
+});
+
+// Get all scores for this judge
+router.get("/judges/scores", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+  const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, session.codeId));
+  res.json(scores.map((s) => ({
+    id: s.id, teamId: s.teamId, score: s.score, totalScore: s.totalScore ?? null,
+    innovationProblemSolving: s.innovationProblemSolving ?? null,
+    technicalExcellence: s.technicalExcellence ?? null,
+    realWorldImpact: s.realWorldImpact ?? null,
+    uiUxExperience: s.uiUxExperience ?? null,
+    presentationCommunication: s.presentationCommunication ?? null,
+    completionFunctionality: s.completionFunctionality ?? null,
+    teamworkManagement: s.teamworkManagement ?? null,
+    feedback: s.feedback,
+  })));
+});
+
+// Lock a team for evaluation
+router.post("/judges/teams/:teamId/lock", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+
+  const teamId = parseInt(String(req.params.teamId), 10);
+  if (isNaN(teamId)) {
+    res.status(400).json({ error: "validation_error", message: "Invalid teamId" });
+    return;
+  }
+
+  // Verify team exists
+  const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId));
+  if (!team) {
+    res.status(404).json({ error: "not_found", message: "Team not found" });
+    return;
+  }
+
+  // Verify domain access
+  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
+  if (code?.domain && team.domain !== code.domain) {
+    res.status(403).json({ error: "domain_mismatch", message: "This team is not in your assigned domain" });
+    return;
+  }
+
+  // Transaction to prevent double-lock race condition
+  const result = await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(judgeTeamLocksTable)
+      .where(and(eq(judgeTeamLocksTable.judgeId, session.codeId), isNull(judgeTeamLocksTable.unlockedAt)));
+    if (existing) return { error: "already_locked" } as const;
+    await tx.insert(judgeTeamLocksTable).values({ judgeId: session.codeId, teamId });
+    return { success: true } as const;
+  });
+
+  if ("error" in result) {
+    res.status(400).json({ error: "already_locked", message: "You must unlock your current team first" });
+    return;
+  }
+
+  res.json({ success: true, lockedTeamId: teamId });
+});
+
+// Unlock a team
+router.post("/judges/teams/:teamId/unlock", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+
+  const teamId = parseInt(String(req.params.teamId), 10);
+  if (isNaN(teamId)) {
+    res.status(400).json({ error: "validation_error", message: "Invalid teamId" });
+    return;
+  }
+
+  const [lock] = await db.select().from(judgeTeamLocksTable)
+    .where(and(eq(judgeTeamLocksTable.judgeId, session.codeId), eq(judgeTeamLocksTable.teamId, teamId), isNull(judgeTeamLocksTable.unlockedAt)));
+
+  if (!lock) {
+    res.status(404).json({ error: "not_found", message: "No active lock for this team" });
+    return;
+  }
+
+  await db.update(judgeTeamLocksTable).set({ unlockedAt: new Date() }).where(eq(judgeTeamLocksTable.id, lock.id));
+  res.json({ success: true });
+});
+
+// Get current lock status
+router.get("/judges/lock-status", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+
+  const [lock] = await db.select().from(judgeTeamLocksTable)
+    .where(and(eq(judgeTeamLocksTable.judgeId, session.codeId), isNull(judgeTeamLocksTable.unlockedAt)));
+
+  res.json({ lockedTeamId: lock?.teamId ?? null, lockedAt: lock?.lockedAt ?? null });
+});
+
+// Disqualify a team (must be >10 min late)
+router.post("/judges/teams/:teamId/disqualify", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+
+  const teamId = parseInt(String(req.params.teamId), 10);
+  if (isNaN(teamId)) {
+    res.status(400).json({ error: "validation_error", message: "Invalid teamId" });
     return;
   }
 
@@ -96,42 +351,30 @@ router.post("/judges/scores", async (req: Request, res: Response) => {
     return;
   }
 
-  const judgeId = session.codeId; // codeId acts as judge identifier
-  const [existing] = await db.select().from(judgeScoresTable)
-    .where(and(eq(judgeScoresTable.judgeId, judgeId), eq(judgeScoresTable.teamId, teamId)));
-
-  const values = {
-    score,
-    innovation: typeof innovation === "number" ? innovation : null,
-    execution: typeof execution === "number" ? execution : null,
-    presentation: typeof presentation === "number" ? presentation : null,
-    feedback: feedback ?? null,
-    updatedAt: new Date(),
-  };
-
-  let saved: typeof judgeScoresTable.$inferSelect;
-  if (existing) {
-    [saved] = await db.update(judgeScoresTable).set(values).where(eq(judgeScoresTable.id, existing.id)).returning();
-  } else {
-    [saved] = await db.insert(judgeScoresTable).values({ judgeId, teamId, ...values, createdAt: new Date() }).returning();
+  // Verify domain access
+  const [code] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.id, session.codeId));
+  if (code?.domain && team.domain !== code.domain) {
+    res.status(403).json({ error: "domain_mismatch", message: "This team is not in your assigned domain" });
+    return;
   }
 
-  await logAction("judge_scored", `Judge (code ${session.codeId}) scored team ${team.name}: ${score}/10`);
-  res.json({ id: saved.id, judgeId: saved.judgeId, teamId: saved.teamId, score: saved.score, innovation: saved.innovation, execution: saved.execution, presentation: saved.presentation, feedback: saved.feedback });
+  if (team.status === "disqualified") {
+    res.status(400).json({ error: "already_disqualified", message: "Team is already disqualified" });
+    return;
+  }
+
+  const [att] = await db.select().from(teamAttendanceTable).where(eq(teamAttendanceTable.teamId, teamId)).orderBy(desc(teamAttendanceTable.createdAt));
+  if (!att || !att.isLate || (att.minutesLate ?? 0) <= 10) {
+    res.status(400).json({ error: "not_eligible", message: "Team has not exceeded the 10-minute late threshold" });
+    return;
+  }
+
+  await db.update(teamsTable).set({ status: "disqualified", disqualifiedAt: new Date(), disqualifiedBy: session.codeId }).where(eq(teamsTable.id, teamId));
+  await logAction("team_disqualified", `Judge (code ${session.codeId}) disqualified team ${team.name} (${att.minutesLate} min late)`);
+  res.json({ success: true });
 });
 
-// Get all scores for this judge
-router.get("/judges/scores", async (req: Request, res: Response) => {
-  const session = await requireJudge(req, res);
-  if (!session) return;
-  const scores = await db.select().from(judgeScoresTable).where(eq(judgeScoresTable.judgeId, session.codeId));
-  res.json(scores.map((s) => ({
-    id: s.id, teamId: s.teamId, score: s.score,
-    innovation: s.innovation, execution: s.execution, presentation: s.presentation, feedback: s.feedback,
-  })));
-});
-
-// Aggregate judge leaderboard
+// Aggregate judge leaderboard (100-point scale)
 router.get("/judges/leaderboard", async (req: Request, res: Response) => {
   const token = extractToken(req.headers.authorization);
   const session = await getSessionFromToken(token);
@@ -150,8 +393,9 @@ router.get("/judges/leaderboard", async (req: Request, res: Response) => {
 
   const teamScores = new Map<number, number[]>();
   for (const s of allScores) {
+    const scoreVal = s.totalScore ?? (s.score * 10);
     if (!teamScores.has(s.teamId)) teamScores.set(s.teamId, []);
-    teamScores.get(s.teamId)!.push(s.score);
+    teamScores.get(s.teamId)!.push(scoreVal);
   }
 
   const leaderboard = teams.map((team) => {
@@ -161,11 +405,15 @@ router.get("/judges/leaderboard", async (req: Request, res: Response) => {
       teamId: team.id,
       teamName: team.name,
       projectTitle: team.projectTitle,
+      domain: team.domain ?? null,
       averageScore: avgScore !== null ? Math.round(avgScore * 10) / 10 : null,
       judgesScored: scores.length,
       totalJudges: judgeCodes.length,
+      isDisqualified: team.status === "disqualified",
     };
   }).sort((a, b) => {
+    if (a.isDisqualified && !b.isDisqualified) return 1;
+    if (!a.isDisqualified && b.isDisqualified) return -1;
     if (a.averageScore === null) return 1;
     if (b.averageScore === null) return -1;
     return b.averageScore - a.averageScore;

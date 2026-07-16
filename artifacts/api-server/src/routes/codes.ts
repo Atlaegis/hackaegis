@@ -113,13 +113,14 @@ router.get("/codes/judges", async (req: Request, res: Response) => {
     .select().from(participationCodesTable)
     .where(eq(participationCodesTable.role, "judge"))
     .orderBy(participationCodesTable.createdAt);
-  res.json(judgeCodes.map((c) => ({ id: c.id, code: c.code, label: c.label ?? null, createdAt: c.createdAt.toISOString() })));
+  res.json(judgeCodes.map((c) => ({ id: c.id, code: c.code, label: c.label ?? null, domain: c.domain ?? null, createdAt: c.createdAt.toISOString() })));
 });
 
 router.post("/codes/judges", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
   const rawLabel = req.body?.label ? String(req.body.label).trim().slice(0, 80) : null;
+  const domain = req.body?.domain ? String(req.body.domain).trim().slice(0, 50) : null;
 
   // Generate a random judge code (non-sequential)
   const existing = new Set(
@@ -138,11 +139,11 @@ router.post("/codes/judges", async (req: Request, res: Response) => {
   const label = rawLabel || `Judge ${judgeCount}`;
 
   const [inserted] = await db.insert(participationCodesTable).values({
-    code, role: "judge", label, isReusable: true, isUsed: false,
+    code, role: "judge", label, isReusable: true, isUsed: false, domain,
   }).returning();
 
-  await logAction("create_judge_code", `Created judge code for: ${label}`);
-  res.status(201).json({ id: inserted.id, code: inserted.code, label: inserted.label ?? null, createdAt: inserted.createdAt.toISOString() });
+  await logAction("create_judge_code", `Created judge code for: ${label}${domain ? ` (domain: ${domain})` : ""}`);
+  res.status(201).json({ id: inserted.id, code: inserted.code, label: inserted.label ?? null, domain: inserted.domain ?? null, createdAt: inserted.createdAt.toISOString() });
 });
 
 router.delete("/codes/judges/:id", async (req: Request, res: Response) => {

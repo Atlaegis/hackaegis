@@ -34,6 +34,10 @@ function formatTeam(team: typeof teamsTable.$inferSelect, members?: Array<{ id: 
     description: team.description ?? null,
     githubUrl: team.githubUrl ?? null,
     isFinalist: (team as typeof team & { isFinalist?: boolean }).isFinalist ?? false,
+    domain: team.domain ?? null,
+    status: team.status ?? "active",
+    disqualifiedAt: team.disqualifiedAt?.toISOString() ?? null,
+    presentationSlot: team.presentationSlot?.toISOString() ?? null,
     createdAt: team.createdAt.toISOString(),
     members: members ?? [],
   };
@@ -83,7 +87,10 @@ router.post("/teams", async (req: Request, res: Response) => {
   let hackathonId = typeof req.body.hackathonId === "number" ? req.body.hackathonId : null;
   if (!hackathonId) hackathonId = await getActiveHackathonId();
 
-  const [team] = await db.insert(teamsTable).values({ ...parse.data, hackathonId }).returning();
+  const domain = req.body.domain ? String(req.body.domain).trim().slice(0, 50) : null;
+  const presentationSlot = req.body.presentationSlot ? new Date(req.body.presentationSlot) : null;
+
+  const [team] = await db.insert(teamsTable).values({ ...parse.data, hackathonId, domain, presentationSlot }).returning();
   await logAction("create_team", `Created team ${team.name} for hackathon ${hackathonId}`);
   res.status(201).json(formatTeam(team, []));
 });
@@ -104,7 +111,11 @@ router.put("/teams/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  const [team] = await db.update(teamsTable).set(parse.data).where(eq(teamsTable.id, id)).returning();
+  const updateData: Record<string, unknown> = { ...parse.data };
+  if (req.body.domain !== undefined) updateData.domain = req.body.domain ? String(req.body.domain).trim().slice(0, 50) : null;
+  if (req.body.presentationSlot !== undefined) updateData.presentationSlot = req.body.presentationSlot ? new Date(req.body.presentationSlot) : null;
+
+  const [team] = await db.update(teamsTable).set(updateData).where(eq(teamsTable.id, id)).returning();
   if (!team) {
     res.status(404).json({ error: "not_found", message: "Team not found" });
     return;

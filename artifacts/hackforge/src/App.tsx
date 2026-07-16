@@ -9,7 +9,7 @@ import Home from "@/pages/Home";
 import Watch from "@/pages/Watch";
 import Results from "@/pages/Results";
 import Admin from "@/pages/Admin";
-import Judges from "@/pages/Judges";
+import JudgePortal from "./pages/judges/index";
 import Register from "@/pages/Register";
 import { WaveLoader } from "@/components/WaveLoader";
 
@@ -34,7 +34,8 @@ function Router() {
           <Route path="/results" component={Results} />
           <Route path="/results/:slug" component={Results} />
           <Route path="/admin" component={Admin} />
-          <Route path="/judges" component={Judges} />
+          <Route path="/judges" component={JudgePortal} />
+          <Route path="/judges/:section" component={JudgePortal} />
           <Route component={NotFound} />
         </Switch>
       </main>

@@ -559,9 +559,10 @@ function TeamsTab() {
   const updateTeam = useUpdateTeam();
   const deleteTeam = useDeleteTeam();
   const { toast } = useToast();
-  const [newTeam, setNewTeam] = useState({ name: "", projectTitle: "", description: "", githubUrl: "" });
+  const [newTeam, setNewTeam] = useState({ name: "", projectTitle: "", description: "", githubUrl: "", domain: "" });
   const [editId, setEditId] = useState<number | null>(null);
-  const [editData, setEditData] = useState({ name: "", projectTitle: "", description: "", githubUrl: "" });
+  const [editData, setEditData] = useState({ name: "", projectTitle: "", description: "", githubUrl: "", domain: "" });
+  const TEAM_DOMAINS = ["AI", "Machine Learning", "Blockchain", "FinTech", "Cybersecurity", "Web Development", "Mobile Development", "Cloud Computing", "IoT", "AR/VR", "Data Science", "DevOps", "Healthcare Tech", "EdTech", "Open Innovation"];
   const [expanded, setExpanded] = useState<number | null>(null);
   const [codeInput, setCodeInput] = useState<Record<number, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
@@ -609,14 +610,28 @@ function TeamsTab() {
             <Input placeholder="Team Name *" value={newTeam.name} onChange={(e) => setNewTeam((p) => ({ ...p, name: e.target.value }))} />
             <Input placeholder="Project Title *" value={newTeam.projectTitle} onChange={(e) => setNewTeam((p) => ({ ...p, projectTitle: e.target.value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Input placeholder="GitHub URL" value={newTeam.githubUrl} onChange={(e) => setNewTeam((p) => ({ ...p, githubUrl: e.target.value }))} />
             <Input placeholder="Description" value={newTeam.description} onChange={(e) => setNewTeam((p) => ({ ...p, description: e.target.value }))} />
+            <select value={newTeam.domain} onChange={(e) => setNewTeam((p) => ({ ...p, domain: e.target.value }))} className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">No domain</option>
+              {TEAM_DOMAINS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
-          <Button size="sm" onClick={() => {
+          <Button size="sm" onClick={async () => {
             if (!newTeam.name || !newTeam.projectTitle) { toast({ title: "Name and project title required", variant: "destructive" }); return; }
-            createTeam.mutate({ data: newTeam }, { onSuccess: () => { toast({ title: "Team created" }); setNewTeam({ name: "", projectTitle: "", description: "", githubUrl: "" }); refetch(); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) });
-          }} disabled={createTeam.isPending || !newTeam.name || !newTeam.projectTitle}>
+            try {
+              const r = await fetch("/api/teams", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ name: newTeam.name, projectTitle: newTeam.projectTitle, description: newTeam.description || undefined, githubUrl: newTeam.githubUrl || undefined, domain: newTeam.domain || undefined }),
+              });
+              if (!r.ok) throw new Error((await r.json()).message ?? "Failed");
+              toast({ title: "Team created" });
+              setNewTeam({ name: "", projectTitle: "", description: "", githubUrl: "", domain: "" });
+              refetch();
+            } catch (err: unknown) { toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" }); }
+          }} disabled={!newTeam.name || !newTeam.projectTitle}>
             <Plus className="w-3.5 h-3.5 mr-1" /> Create Team
           </Button>
         </CardContent>
@@ -635,12 +650,22 @@ function TeamsTab() {
                     <Input value={editData.name} onChange={(e) => setEditData((p) => ({ ...p, name: e.target.value }))} placeholder="Team name" />
                     <Input value={editData.projectTitle} onChange={(e) => setEditData((p) => ({ ...p, projectTitle: e.target.value }))} placeholder="Project title" />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <Input value={editData.githubUrl} onChange={(e) => setEditData((p) => ({ ...p, githubUrl: e.target.value }))} placeholder="GitHub URL" />
                     <Input value={editData.description} onChange={(e) => setEditData((p) => ({ ...p, description: e.target.value }))} placeholder="Description" />
+                    <select value={editData.domain} onChange={(e) => setEditData((p) => ({ ...p, domain: e.target.value }))} className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs">
+                      <option value="">No domain</option>
+                      {TEAM_DOMAINS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => updateTeam.mutate({ id: team.id, data: editData }, { onSuccess: () => { toast({ title: "Team updated" }); setEditId(null); refetch(); }, onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }) })}>Save</Button>
+                    <Button size="sm" onClick={async () => {
+                      try {
+                        const r = await fetch(`/api/teams/${team.id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...editData, domain: editData.domain || undefined }) });
+                        if (!r.ok) throw new Error((await r.json()).message ?? "Failed");
+                        toast({ title: "Team updated" }); setEditId(null); refetch();
+                      } catch (err: unknown) { toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" }); }
+                    }}>Save</Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
                   </div>
                 </div>
@@ -659,7 +684,7 @@ function TeamsTab() {
                       <Button size="sm" variant={team.isFinalist ? "default" : "outline"} className={`h-7 text-xs gap-1 ${team.isFinalist ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""}`} onClick={() => handleToggleFinalist(team.id, team.isFinalist)}>
                         <Star className="w-2.5 h-2.5" />{team.isFinalist ? "Finalist" : "Set Finalist"}
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle, description: team.description ?? "", githubUrl: team.githubUrl ?? "" }); }}><Edit3 className="w-3 h-3" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditId(team.id); setEditData({ name: team.name, projectTitle: team.projectTitle, description: team.description ?? "", githubUrl: team.githubUrl ?? "", domain: (team as Record<string, unknown>).domain as string ?? "" }); }}><Edit3 className="w-3 h-3" /></Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setExpanded(expanded === team.id ? null : team.id)}>
                         {expanded === team.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                       </Button>
@@ -718,26 +743,29 @@ function TeamsTab() {
 
 // ─── Judges Tab ────────────────────────────────────────────────────────────────
 function JudgesTab() {
-  const { data: codes, loading, refetch } = useAdminFetch<Array<{ id: number; code: string; label: string | null; isUsed: boolean }>>("/api/codes?role=judge");
+  const { data: codes, loading, refetch } = useAdminFetch<Array<{ id: number; code: string; label: string | null; domain: string | null; createdAt: string }>>("/api/codes/judges");
   const { toast } = useToast();
   const token = localStorage.getItem("hackaegis_admin_token");
   const [newLabel, setNewLabel] = useState("");
+  const [newDomain, setNewDomain] = useState("");
   const [creating, setCreating] = useState(false);
   const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
+
+  const DOMAINS = ["AI", "Machine Learning", "Blockchain", "FinTech", "Cybersecurity", "Web Development", "Mobile Development", "Cloud Computing", "IoT", "AR/VR", "Data Science", "DevOps", "Healthcare Tech", "EdTech", "Open Innovation"];
 
   const createJudge = async () => {
     if (!newLabel) { toast({ title: "Label required", variant: "destructive" }); return; }
     setCreating(true);
     try {
-      const n = ((codes?.length ?? 0) + 1).toString().padStart(2, "0");
-      const code = `HACKAEGIS_JUDGE@${n}`;
-      const r = await fetch("/api/codes/judge", {
+      const r = await fetch("/api/codes/judges", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ label: newLabel, code }),
+        body: JSON.stringify({ label: newLabel, domain: newDomain || null }),
       });
       if (!r.ok) throw new Error("Failed to create judge");
-      toast({ title: "Judge created", description: code });
+      const created = await r.json();
+      toast({ title: "Judge created", description: `${created.code}${newDomain ? ` (${newDomain})` : ""}` });
       setNewLabel("");
+      setNewDomain("");
       refetch();
     } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
     finally { setCreating(false); }
@@ -750,6 +778,10 @@ function JudgesTab() {
         <CardContent className="space-y-3">
           <div className="flex gap-3">
             <Input placeholder="Judge name / label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+            <select value={newDomain} onChange={(e) => setNewDomain(e.target.value)} className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">No domain</option>
+              {DOMAINS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
             <Button onClick={createJudge} disabled={creating || !newLabel}><Plus className="w-4 h-4 mr-1" /> Add</Button>
           </div>
         </CardContent>
@@ -761,7 +793,7 @@ function JudgesTab() {
             {confirmDeleteCode === c.code ? (
               <div className="p-2">
                 <ConfirmDelete label={`${c.label ?? c.code}`} onConfirm={async () => {
-                  await adminApi("DELETE", `/api/codes/${c.code}`);
+                  await adminApi("DELETE", `/api/codes/judges/${c.id}`);
                   toast({ title: "Judge code deleted" }); setConfirmDeleteCode(null); refetch();
                 }} onCancel={() => setConfirmDeleteCode(null)} />
               </div>
@@ -772,7 +804,8 @@ function JudgesTab() {
                   <p className="font-semibold text-sm">{c.label ?? "Judge"}</p>
                   <p className="font-mono text-xs text-muted-foreground">{c.code}</p>
                 </div>
-                <Badge variant={c.isUsed ? "secondary" : "outline"} className={`text-xs ${c.isUsed ? "text-chart-3" : ""}`}>{c.isUsed ? "ACTIVE" : "UNUSED"}</Badge>
+                {c.domain && <Badge variant="secondary" className="text-xs">{c.domain}</Badge>}
+                <Badge variant="outline" className="text-xs">JUDGE</Badge>
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigator.clipboard.writeText(c.code)}><Copy className="w-3 h-3" /></Button>
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => setConfirmDeleteCode(c.code)}><Trash2 className="w-3 h-3" /></Button>
               </div>

@@ -40,6 +40,7 @@ export const participationCodesTable = pgTable("participation_codes", {
   isUsed: boolean("is_used").notNull().default(false),
   usedAt: timestamp("used_at"),
   teamId: integer("team_id"),
+  domain: varchar("domain", { length: 50 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -78,6 +79,11 @@ export const teamsTable = pgTable("teams", {
   description: text("description"),
   githubUrl: text("github_url"),
   isFinalist: boolean("is_finalist").notNull().default(false),
+  domain: varchar("domain", { length: 50 }),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  disqualifiedAt: timestamp("disqualified_at"),
+  disqualifiedBy: integer("disqualified_by"),
+  presentationSlot: timestamp("presentation_slot"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -109,12 +115,58 @@ export const judgeScoresTable = pgTable("judge_scores", {
   innovation: real("innovation"),
   execution: real("execution"),
   presentation: real("presentation"),
+  // New 7-criteria scoring (100-point scale)
+  innovationProblemSolving: real("innovation_problem_solving"),
+  technicalExcellence: real("technical_excellence"),
+  realWorldImpact: real("real_world_impact"),
+  uiUxExperience: real("ui_ux_experience"),
+  presentationCommunication: real("presentation_communication"),
+  completionFunctionality: real("completion_functionality"),
+  teamworkManagement: real("teamwork_management"),
+  totalScore: real("total_score"),
   feedback: text("feedback"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export type JudgeScore = typeof judgeScoresTable.$inferSelect;
+
+// ─── Judge Team Locks ────────────────────────────────────────────────────────
+export const judgeTeamLocksTable = pgTable("judge_team_locks", {
+  id: serial("id").primaryKey(),
+  judgeId: integer("judge_id").notNull(),
+  teamId: integer("team_id").notNull(),
+  lockedAt: timestamp("locked_at").notNull().defaultNow(),
+  unlockedAt: timestamp("unlocked_at"),
+});
+
+export type JudgeTeamLock = typeof judgeTeamLocksTable.$inferSelect;
+
+// ─── Judge Announcements ─────────────────────────────────────────────────────
+export const judgeAnnouncementsTable = pgTable("judge_announcements", {
+  id: serial("id").primaryKey(),
+  hackathonId: integer("hackathon_id"),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  priority: varchar("priority", { length: 20 }).notNull().default("normal"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type JudgeAnnouncement = typeof judgeAnnouncementsTable.$inferSelect;
+
+// ─── Team Attendance ─────────────────────────────────────────────────────────
+export const teamAttendanceTable = pgTable("team_attendance", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  hackathonId: integer("hackathon_id"),
+  presentationSlot: timestamp("presentation_slot").notNull(),
+  joinedAt: timestamp("joined_at"),
+  isLate: boolean("is_late").notNull().default(false),
+  minutesLate: integer("minutes_late").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type TeamAttendance = typeof teamAttendanceTable.$inferSelect;
 
 // ─── Registrations ────────────────────────────────────────────────────────────
 export const registrationsTable = pgTable("registrations", {

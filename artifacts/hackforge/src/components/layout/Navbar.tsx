@@ -36,8 +36,11 @@ export function Navbar() {
 
   const navLinks: { href: string; label: string; icon: React.ReactNode }[] = [
     { href: "/", label: "Home", icon: <Terminal className="w-4 h-4 mr-2" /> },
-    { href: "/results", label: "Results", icon: <Trophy className="w-4 h-4 mr-2" /> },
   ];
+
+  if (eventStatus?.resultsPublished) {
+    navLinks.push({ href: "/results", label: "Results", icon: <Trophy className="w-4 h-4 mr-2" /> });
+  }
 
   if (hasParticipantToken || me?.participantCode) navLinks.push({ href: "/watch", label: "Watch Live", icon: <Tv className="w-4 h-4 mr-2" /> });
   if (hasAdminToken || me?.isAdmin) navLinks.push({ href: "/admin", label: "Admin", icon: <LayoutDashboard className="w-4 h-4 mr-2" /> });
