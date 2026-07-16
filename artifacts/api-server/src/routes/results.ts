@@ -187,7 +187,7 @@ router.get("/results/export", async (req: Request, res: Response) => {
   ).join("\n");
 
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=hackforge-results.csv");
+  res.setHeader("Content-Disposition", "attachment; filename=hackaegis-results.csv");
   res.send(header + csvRows);
 });
 

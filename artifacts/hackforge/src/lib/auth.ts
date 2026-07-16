@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 
-const TOKEN_KEY = "hackforge_token";
-const ADMIN_TOKEN_KEY = "hackforge_admin_token";
-const JUDGE_TOKEN_KEY = "hackforge_judge_token";
+const TOKEN_KEY = "hackaegis_token";
+const ADMIN_TOKEN_KEY = "hackaegis_admin_token";
+const JUDGE_TOKEN_KEY = "hackaegis_judge_token";
 
 export function useAuthTokens() {
   useEffect(() => {

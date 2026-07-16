@@ -1,4 +1,4 @@
-# HackForge TODO
+# HackAegis TODO
 
 ## Role sync / flow checks
 - Verify participant login binds to team correctly in `/watch` after code assignment.

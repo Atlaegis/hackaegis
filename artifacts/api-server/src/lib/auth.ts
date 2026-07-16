@@ -8,14 +8,14 @@ export function generateToken(): string {
   return crypto.randomBytes(48).toString("hex");
 }
 
-/** Participant code format: HACKFORGE_PART_XXXXXXXX (32-char entropy suffix) */
+/** Participant code format: HACKAEGIS_PART_XXXXXXXX (32-char entropy suffix) */
 export function generateParticipantCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let suffix = "";
   for (let i = 0; i < 10; i++) {
     suffix += chars[Math.floor(Math.random() * chars.length)];
   }
-  return `HACKFORGE_PART_${suffix}`;
+  return `HACKAEGIS_PART_${suffix}`;
 }
 
 /** Legacy code generator (kept for backward compat) */
@@ -30,7 +30,7 @@ export function generateJudgeCode(): string {
   for (let i = 0; i < 6; i++) {
     suffix += chars[Math.floor(Math.random() * chars.length)];
   }
-  return `HACKFORGE_JUDGE_${suffix}`;
+  return `HACKAEGIS_JUDGE_${suffix}`;
 }
 
 export async function getSessionFromToken(token: string | undefined): Promise<typeof sessionsTable.$inferSelect | null> {

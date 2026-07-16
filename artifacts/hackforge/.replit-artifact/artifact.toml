@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "HackForge"
+title = "HackAegis"
 version = "1.0.0"
 id = "artifacts/hackforge"
 router = "path"

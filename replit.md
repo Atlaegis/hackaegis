@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Contains **HackForge** — a full-stack hackathon management platform with multi-event support, real team auth, live voting, judge scoring, and submission management.
+pnpm workspace monorepo using TypeScript. Contains **HackAegis** — a full-stack hackathon management platform with multi-event support, real team auth, live voting, judge scoring, and submission management.
 
 ## Stack
 
@@ -26,7 +26,7 @@ pnpm workspace monorepo using TypeScript. Contains **HackForge** — a full-stac
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/db run push-force` — force push (destroys data — dev only)
 
-## HackForge Platform
+## HackAegis Platform
 
 ### Artifacts
 - `artifacts/hackforge` — React+Vite frontend (previewPath `/`)
@@ -41,9 +41,9 @@ pnpm workspace monorepo using TypeScript. Contains **HackForge** — a full-stac
 
 ### Auth Model
 Three roles via a single `POST /api/auth/login` endpoint (detects role from code prefix):
-- **Participant**: single-use `HACKFORGE_PART_XXXXXXXX` codes → stored as `hackforge_token`
-- **Admin**: reusable `HACKFORGE_ADMIN@XX` codes → stored as `hackforge_admin_token`
-- **Judge**: reusable `HACKFORGE_JUDGE@XX` codes → stored as `hackforge_judge_token`
+- **Participant**: single-use `HACKAEGIS_PART_XXXXXXXX` codes → stored as `hackaegis_token`
+- **Admin**: reusable `HACKAEGIS_ADMIN@XX` codes → stored as `hackaegis_admin_token`
+- **Judge**: reusable `HACKAEGIS_JUDGE@XX` codes → stored as `hackaegis_judge_token`
 
 Team auth: participant codes can be bound to a team via `teamId` field on `participation_codes`. Admin assigns via `POST /api/teams/:id/assign-code`. Bound participants see their team info and submission form on `/watch`.
 
@@ -124,9 +124,9 @@ Tables:
 - `GET|PUT /api/event/status`
 
 ### Auth Model (updated)
-- **Participant**: `HACKFORGE_PART_XXXXXXXXXX` (10-char random suffix, single-use)
+- **Participant**: `HACKAEGIS_PART_XXXXXXXXXX` (10-char random suffix, single-use)
 - **Admin**: reusable codes stored in DB (no format hint exposed in UI)
-- **Judge**: `HACKFORGE_JUDGE_XXXXXX` (6-char random suffix, non-sequential)
+- **Judge**: `HACKAEGIS_JUDGE_XXXXXX` (6-char random suffix, non-sequential)
 
 ### Security Hardening (applied)
 - **Rate limiting**: `POST /api/auth/login` + `POST /api/auth/verify-code` → 10 req/15 min per IP; `POST /api/register` → 5 req/hour; global → 300 req/min (`express-rate-limit`)
@@ -135,20 +135,20 @@ Tables:
 - **Session expiry**: Sessions expire after 24 hours (checked in `getSessionFromToken`)
 - **Token entropy**: Tokens are 48 random bytes (hex), not 32
 - **jitsiPassword hidden from public**: Only returned to admin/judge in `/api/hackathons/active`; never in public list/slug endpoints
-- **No hardcoded admin code in UI**: Removed the `HACKFORGE_ADMIN@01` hint from the admin access page
+- **No hardcoded admin code in UI**: Removed the `HACKAEGIS_ADMIN@01` hint from the admin access page
 - **Legacy broken route removed**: `POST /api/auth/admin/login` (which bypassed code check) is gone → returns 404
 - **Non-enumerable judge codes**: Judge codes use random 6-char suffix, not sequential `@01/@02`
 - **Input sanitization on registration**: Length limits on all string fields (fullName≤120, email≤200, teamName≤100, notes≤1000), paymentMode allowlisted
 
 ### Seed Data (dev)
-- 2 hackathons: HackForge 2024 (completed, results published), HackForge 2025 (active, registration phase)
+- 2 hackathons: HackAegis 2024 (completed, results published), HackAegis 2025 (active, registration phase)
 - Admin code: see DB (not documented here for security)
-- 5 teams: BitCraft, Quantum Coders, Syntax Squad, The Builders, Team Nexus (all in HackForge 2025)
+- 5 teams: BitCraft, Quantum Coders, Syntax Squad, The Builders, Team Nexus (all in HackAegis 2025)
 
 ### Notes
 - After schema changes, run `pnpm run typecheck:libs` to rebuild lib declarations before API server typecheck
 - The `event_config` table is kept for OpenAPI backward compat; it's synced from the active hackathon on updates
 - Submission lock: locked if `hackathons.submissionLocked=true` OR phase is `elimination`/`finale`
-- HackForge 2024 has `resultsPublished=true` but no teams assigned to it (teams are in 2025)
+- HackAegis 2024 has `resultsPublished=true` but no teams assigned to it (teams are in 2025)
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

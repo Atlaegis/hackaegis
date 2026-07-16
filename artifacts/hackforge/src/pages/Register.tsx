@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Mail, Phone, Hash, Terminal, CheckCircle2, ArrowRight, ArrowLeft, Zap, Trophy, CreditCard, Smartphone, Banknote } from "lucide-react";
+import { Users, Mail, Phone, Hash, Terminal, CheckCircle2, ArrowRight, ArrowLeft, Zap, Trophy, CreditCard, Smartphone } from "lucide-react";
 
 interface ActiveHackathon {
   id: number; name: string; slug: string; tagline: string | null;
@@ -15,7 +15,6 @@ interface ActiveHackathon {
 }
 
 const PAYMENT_MODES = [
-  { value: "offline", label: "Offline / Cash", icon: Banknote, desc: "Pay at the venue or to organizer" },
   { value: "upi", label: "UPI", icon: Smartphone, desc: "Google Pay, PhonePe, Paytm, etc." },
   { value: "online", label: "Online Payment", icon: CreditCard, desc: "Card / Net Banking (coming soon)" },
 ];
@@ -34,9 +33,13 @@ export default function Register() {
     teamName: "",
     phone: "",
     memberCount: 1,
-    paymentMode: "offline",
+    paymentMode: "upi",
     notes: "",
   });
+
+  const [teamMembers, setTeamMembers] = useState<Array<{ fullName: string; email: string; phone: string }>>([
+    { fullName: "", email: "", phone: "" }
+  ]);
 
   useEffect(() => {
     fetch("/api/hackathons/active")
@@ -45,7 +48,21 @@ export default function Register() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    setTeamMembers((prev) => {
+      const newArr = [...prev];
+      while (newArr.length < form.memberCount) {
+        newArr.push({ fullName: "", email: "", phone: "" });
+      }
+      return newArr.slice(0, form.memberCount);
+    });
+  }, [form.memberCount]);
+
   const set = (k: string, v: string | number) => setForm((p) => ({ ...p, [k]: v }));
+
+  const updateMember = (idx: number, field: "fullName" | "email" | "phone", value: string) => {
+    setTeamMembers((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,16 +70,38 @@ export default function Register() {
       toast({ title: "Missing fields", description: "Name, email, and team name are required.", variant: "destructive" });
       return;
     }
+    if (form.fullName.length < 2) {
+      toast({ title: "Name too short", description: "Full name must be at least 2 characters.", variant: "destructive" });
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       toast({ title: "Invalid email", variant: "destructive" });
       return;
+    }
+    if (form.memberCount > 1) {
+      for (let i = 1; i < teamMembers.length; i++) {
+        if (!teamMembers[i].fullName || teamMembers[i].fullName.length < 2) {
+          toast({ title: "Missing member details", description: `Member ${i + 1} needs a full name.`, variant: "destructive" });
+          return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(teamMembers[i].email)) {
+          toast({ title: "Invalid email", description: `Member ${i + 1} has an invalid email.`, variant: "destructive" });
+          return;
+        }
+      }
     }
     setLoading(true);
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, hackathonId: hackathon?.id ?? null }),
+        body: JSON.stringify({
+          ...form,
+          teamMembers: form.memberCount > 1 ? teamMembers.map((m, i) =>
+            i === 0 ? { fullName: form.fullName, email: form.email, phone: form.phone } : m
+          ) : null,
+          hackathonId: hackathon?.id ?? null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? "Registration failed");
@@ -97,7 +136,7 @@ export default function Register() {
                 <div>
                   <p className="font-semibold text-sm">Payment Verification</p>
                   <p className="text-xs text-muted-foreground">
-                    {form.paymentMode === "offline" ? "Pay the registration fee at the venue or to the organizer." : form.paymentMode === "upi" ? "Complete your UPI payment and share the screenshot with the organizer." : "Complete payment when the link is shared with you."}
+                    Complete your UPI payment and share the screenshot with the organizer.
                   </p>
                 </div>
               </div>
@@ -116,7 +155,7 @@ export default function Register() {
                 </div>
                 <div>
                   <p className="font-semibold text-sm">Get Your Code</p>
-                  <p className="text-xs text-muted-foreground">Your <span className="font-mono text-primary">HACKFORGE_PART_XXXXXXXX</span> code will be shared with you via email.</p>
+                  <p className="text-xs text-muted-foreground">Your <span className="font-mono text-primary">HACKAEGIS_PART_XXXXXXXX</span> code will be shared with you via email.</p>
                 </div>
               </div>
             </CardContent>
@@ -125,7 +164,7 @@ export default function Register() {
             <Button variant="outline" className="flex-1" onClick={() => setLocation("/")}>
               <ArrowLeft className="w-4 h-4 mr-2" /> Back Home
             </Button>
-            <Button className="flex-1" onClick={() => { setStep("form"); setForm({ fullName: "", email: "", teamName: "", phone: "", memberCount: 1, paymentMode: "offline", notes: "" }); }}>
+            <Button className="flex-1" onClick={() => { setStep("form"); setForm({ fullName: "", email: "", teamName: "", phone: "", memberCount: 1, paymentMode: "upi", notes: "" }); setTeamMembers([{ fullName: "", email: "", phone: "" }]); }}>
               Register Another
             </Button>
           </div>
@@ -140,7 +179,7 @@ export default function Register() {
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
             <Terminal className="w-4 h-4" />
-            {hackathon ? hackathon.name : "HackForge"}
+            {hackathon ? hackathon.name : "HackAegis"}
           </div>
           <h1 className="text-3xl font-bold">Register for the Hackathon</h1>
           <p className="text-muted-foreground">Fill in your details to get started. Admin will verify and assign your access code.</p>
@@ -183,11 +222,50 @@ export default function Register() {
                         value={form.memberCount}
                         onChange={(e) => set("memberCount", parseInt(e.target.value, 10))}
                       >
-                        {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} member{n !== 1 ? "s" : ""}</option>)}
+                        {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} member{n !== 1 ? "s" : ""}</option>)}
                       </select>
                     </div>
                   </div>
                 </div>
+
+                {/* Dynamic Team Members */}
+                {form.memberCount > 1 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Team Members</p>
+                    <div className="space-y-3">
+                      {teamMembers.map((member, idx) => (
+                        <div key={idx} className="p-3 rounded-lg border border-border bg-muted/20">
+                          <p className="text-xs font-medium mb-2 text-primary">
+                            Member {idx + 1} {idx === 0 && "(Team Leader — auto-filled)"}
+                          </p>
+                          <div className="grid sm:grid-cols-3 gap-3">
+                            <Input
+                              value={idx === 0 ? form.fullName : member.fullName}
+                              onChange={(e) => updateMember(idx, "fullName", e.target.value)}
+                              placeholder="Full Name *"
+                              disabled={idx === 0}
+                              required={idx !== 0}
+                            />
+                            <Input
+                              type="email"
+                              value={idx === 0 ? form.email : member.email}
+                              onChange={(e) => updateMember(idx, "email", e.target.value)}
+                              placeholder="Email *"
+                              disabled={idx === 0}
+                              required={idx !== 0}
+                            />
+                            <Input
+                              value={idx === 0 ? form.phone : member.phone}
+                              onChange={(e) => updateMember(idx, "phone", e.target.value)}
+                              placeholder="Phone"
+                              disabled={idx === 0}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Team Info */}
                 <div>
@@ -201,7 +279,7 @@ export default function Register() {
                 {/* Payment Mode */}
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Payment Preference</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {PAYMENT_MODES.map((mode) => (
                       <button
                         key={mode.value}

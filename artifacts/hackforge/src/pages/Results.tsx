@@ -223,7 +223,7 @@ export default function Results() {
               <Trophy className="w-8 h-8 text-primary" />
               <h1 className="text-4xl font-bold tracking-tight font-mono">HACKATHONS</h1>
             </div>
-            <p className="text-muted-foreground">All HackForge events — past, present, and future.</p>
+            <p className="text-muted-foreground">All HackAegis events — past, present, and future.</p>
           </motion.div>
         )}
 

@@ -26,18 +26,18 @@ function sanitizeString(val: unknown, maxLen: number): string {
 
 // ─── Public: submit registration ─────────────────────────────────────────────
 router.post("/register", registrationRateLimit, async (req: Request, res: Response) => {
-  const { hackathonId, fullName, email, teamName, phone, memberCount, paymentMode, notes } = req.body ?? {};
+  const { hackathonId, fullName, email, teamName, phone, memberCount, paymentMode, notes, teamMembers } = req.body ?? {};
 
   const cleanFullName = sanitizeString(fullName, 120);
   const cleanEmail = sanitizeString(email, 200).toLowerCase();
   const cleanTeamName = sanitizeString(teamName, 100);
   const cleanPhone = phone ? sanitizeString(phone, 30) : null;
   const cleanNotes = notes ? sanitizeString(notes, 1000) : null;
-  const cleanPaymentMode = ["offline", "upi", "online"].includes(String(paymentMode)) ? String(paymentMode) : "offline";
-  const cleanMemberCount = typeof memberCount === "number" && memberCount >= 1 && memberCount <= 10
+  const cleanPaymentMode = ["upi"].includes(String(paymentMode)) ? String(paymentMode) : "upi";
+  const cleanMemberCount = typeof memberCount === "number" && memberCount >= 1 && memberCount <= 6
     ? memberCount
     : typeof memberCount === "string" && !isNaN(Number(memberCount))
-      ? Math.min(Math.max(1, parseInt(memberCount, 10)), 10)
+      ? Math.min(Math.max(1, parseInt(memberCount, 10)), 6)
       : 1;
 
   if (!cleanFullName || !cleanEmail || !cleanTeamName) {
@@ -60,6 +60,26 @@ router.post("/register", registrationRateLimit, async (req: Request, res: Respon
     return;
   }
 
+  let cleanTeamMembers: Array<{ fullName: string; email: string; phone: string }> | null = null;
+  if (cleanMemberCount > 1 && Array.isArray(teamMembers) && teamMembers.length > 0) {
+    cleanTeamMembers = teamMembers.slice(0, cleanMemberCount).map((m: any) => ({
+      fullName: sanitizeString(m?.fullName, 120),
+      email: sanitizeString(m?.email, 200).toLowerCase(),
+      phone: m?.phone ? sanitizeString(m.phone, 30) : "",
+    }));
+    for (let i = 0; i < cleanTeamMembers.length; i++) {
+      const member = cleanTeamMembers[i];
+      if (!member.fullName || member.fullName.length < 2) {
+        res.status(400).json({ error: "validation_error", message: `Team member ${i + 1} must have a full name (2+ characters)` });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email)) {
+        res.status(400).json({ error: "validation_error", message: `Team member ${i + 1} has an invalid email address` });
+        return;
+      }
+    }
+  }
+
   let resolvedHackathonId: number | null = hackathonId ? parseInt(String(hackathonId), 10) : null;
   if (!resolvedHackathonId || isNaN(resolvedHackathonId)) {
     const [active] = await db.select({ id: hackathonsTable.id }).from(hackathonsTable).where(eq(hackathonsTable.status, "active")).orderBy(desc(hackathonsTable.id));
@@ -73,6 +93,7 @@ router.post("/register", registrationRateLimit, async (req: Request, res: Respon
     teamName: cleanTeamName,
     phone: cleanPhone,
     memberCount: cleanMemberCount,
+    teamMembers: cleanTeamMembers,
     paymentMode: cleanPaymentMode,
     paymentStatus: "pending",
     notes: cleanNotes,
@@ -95,6 +116,7 @@ router.get("/admin/registrations", async (req: Request, res: Response) => {
     teamName: r.teamName,
     phone: r.phone ?? null,
     memberCount: r.memberCount,
+    teamMembers: r.teamMembers ?? null,
     paymentMode: r.paymentMode,
     paymentStatus: r.paymentStatus,
     notes: r.notes ?? null,

@@ -41,7 +41,7 @@ import { motion, AnimatePresence } from "framer-motion";
 function useAdminFetch<T>(url: string, deps: unknown[] = []): { data: T | null; loading: boolean; refetch: () => void } {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
-  const token = localStorage.getItem("hackforge_admin_token");
+  const token = localStorage.getItem("hackaegis_admin_token");
   const load = useCallback(() => {
     setLoading(true);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -52,7 +52,7 @@ function useAdminFetch<T>(url: string, deps: unknown[] = []): { data: T | null; 
 }
 
 function adminApi(method: string, path: string, body?: unknown) {
-  const token = localStorage.getItem("hackforge_admin_token");
+  const token = localStorage.getItem("hackaegis_admin_token");
   return fetch(path, {
     method,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -227,7 +227,7 @@ function HackathonsTab() {
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Input placeholder="Name *" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-                  <Input placeholder="Slug * (e.g. hackforge-2026)" value={form.slug} onChange={(e) => setForm((p) => ({ ...p, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") }))} />
+                  <Input placeholder="Slug * (e.g. hackaegis-2026)" value={form.slug} onChange={(e) => setForm((p) => ({ ...p, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") }))} />
                 </div>
                 <Input placeholder="Tagline" value={form.tagline} onChange={(e) => setForm((p) => ({ ...p, tagline: e.target.value }))} />
                 <Textarea placeholder="Description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} className="resize-none" />
@@ -325,6 +325,7 @@ interface Registration {
   phone: string | null; memberCount: number; paymentMode: string;
   paymentStatus: string; notes: string | null; participantCode: string | null;
   createdAt: string; hackathonId: number | null;
+  teamMembers: Array<{ fullName: string; email: string; phone: string }> | null;
 }
 
 function RegistrationsTab() {
@@ -396,6 +397,16 @@ function RegistrationsTab() {
                   </div>
                   <p className="text-xs text-muted-foreground">{reg.fullName} · {reg.email}{reg.phone && ` · ${reg.phone}`}</p>
                   {reg.notes && <p className="text-xs text-muted-foreground/70 mt-1 italic">"{reg.notes}"</p>}
+                  {Array.isArray(reg.teamMembers) && reg.teamMembers.length > 0 && (
+                    <div className="mt-2 space-y-0.5">
+                      <p className="text-xs font-medium text-muted-foreground">Team Members:</p>
+                      {(reg.teamMembers as Array<{ fullName?: string; email?: string; phone?: string }>).map((m, i) => (
+                        <p key={i} className="text-xs text-muted-foreground pl-2">
+                          {i + 1}. {m?.fullName || "(unknown)"} ({m?.email || "—"}){m?.phone ? ` · ${m.phone}` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   {reg.participantCode && (
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">{reg.participantCode}</span>
@@ -455,7 +466,7 @@ function CodesTab() {
   const teamMap = new Map(teams?.map((t) => [t.id, t.name]) ?? []);
 
   const assignTeam = async (code: string, teamId: number | "") => {
-    const token = localStorage.getItem("hackforge_admin_token");
+    const token = localStorage.getItem("hackaegis_admin_token");
     if (teamId === "") {
       await fetch("/api/teams/unassign-code", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ code }) });
     } else {
@@ -470,7 +481,7 @@ function CodesTab() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-mono">GENERATE PARTICIPANT CODES</CardTitle>
-          <CardDescription>Format: <span className="text-primary font-mono">HACKFORGE_PART_XXXXXXXX</span></CardDescription>
+          <CardDescription>Format: <span className="text-primary font-mono">HACKAEGIS_PART_XXXXXXXX</span></CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-3">
@@ -555,7 +566,7 @@ function TeamsTab() {
   const [codeInput, setCodeInput] = useState<Record<number, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const { data: hackathons } = useAdminFetch<Hackathon[]>("/api/hackathons");
-  const token = localStorage.getItem("hackforge_admin_token");
+  const token = localStorage.getItem("hackaegis_admin_token");
 
   const teams = (teamsRaw ?? []) as unknown as Array<{
     id: number; name: string; projectTitle: string; description: string | null;
@@ -681,7 +692,7 @@ function TeamsTab() {
                           </div>
                           <div className="flex gap-2 items-center">
                             <Input
-                              placeholder="Assign code: HACKFORGE_PART_..."
+                              placeholder="Assign code: HACKAEGIS_PART_..."
                               value={codeInput[team.id] ?? ""}
                               onChange={(e) => setCodeInput((p) => ({ ...p, [team.id]: e.target.value.toUpperCase() }))}
                               className="h-8 text-xs font-mono"
@@ -709,7 +720,7 @@ function TeamsTab() {
 function JudgesTab() {
   const { data: codes, loading, refetch } = useAdminFetch<Array<{ id: number; code: string; label: string | null; isUsed: boolean }>>("/api/codes?role=judge");
   const { toast } = useToast();
-  const token = localStorage.getItem("hackforge_admin_token");
+  const token = localStorage.getItem("hackaegis_admin_token");
   const [newLabel, setNewLabel] = useState("");
   const [creating, setCreating] = useState(false);
   const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
@@ -719,7 +730,7 @@ function JudgesTab() {
     setCreating(true);
     try {
       const n = ((codes?.length ?? 0) + 1).toString().padStart(2, "0");
-      const code = `HACKFORGE_JUDGE@${n}`;
+      const code = `HACKAEGIS_JUDGE@${n}`;
       const r = await fetch("/api/codes/judge", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ label: newLabel, code }),
@@ -981,7 +992,7 @@ function LiveTab() {
 
   const handleLaunchMeet = async () => {
     if (!activeHackathon) { toast({ title: "No active hackathon", variant: "destructive" }); return; }
-    const roomName = meetForm.jitsiRoom || `HackForge-${Date.now()}`;
+    const roomName = meetForm.jitsiRoom || `HackAegis-${Date.now()}`;
     setBusy(true);
     try {
       await adminApi("PUT", `/api/hackathons/${activeHackathon.id}`, {
@@ -1057,7 +1068,7 @@ function LiveTab() {
             <CardContent className="space-y-3">
               <div>
                 <label className="text-xs text-muted-foreground">Jitsi Room Name</label>
-                <Input value={meetForm.jitsiRoom} onChange={(e) => setMeetForm((p) => ({ ...p, jitsiRoom: e.target.value }))} placeholder="HackForge-2025-Finals" className="mt-1 font-mono" />
+                <Input value={meetForm.jitsiRoom} onChange={(e) => setMeetForm((p) => ({ ...p, jitsiRoom: e.target.value }))} placeholder="HackAegis-2025-Finals" className="mt-1 font-mono" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Meet Mode</label>
@@ -1410,7 +1421,7 @@ export default function Admin() {
   const adminToken = getAdminToken();
 
   useEffect(() => {
-    if (adminToken) setAuthTokenGetter(() => localStorage.getItem("hackforge_admin_token"));
+    if (adminToken) setAuthTokenGetter(() => localStorage.getItem("hackaegis_admin_token"));
   }, [adminToken]);
 
   if (!adminToken) {
@@ -1450,7 +1461,7 @@ export default function Admin() {
             <div className="bg-primary/10 p-2 rounded-lg border border-primary/20"><Terminal className="w-5 h-5 text-primary" /></div>
             <div>
               <h1 className="font-bold font-mono text-xl">ADMIN PANEL</h1>
-              <p className="text-sm text-muted-foreground">HackForge Command Centre</p>
+              <p className="text-sm text-muted-foreground">HackAegis Command Centre</p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout} className="text-muted-foreground gap-2">

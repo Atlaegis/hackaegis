@@ -175,7 +175,7 @@ function JitsiMeet({ roomName, displayName, isHost }: { roomName: string; displa
         src={src}
         allow="camera; microphone; display-capture; fullscreen; autoplay"
         allowFullScreen
-        title="HackForge Live Meet"
+        title="HackAegis Live Meet"
       />
     </div>
   );
@@ -357,7 +357,7 @@ export default function Watch() {
                   <iframe
                     className="absolute inset-0 w-full h-full"
                     src={`https://www.youtube.com/embed/${extractYouTubeId(activeHackathon?.streamUrl ?? eventStatus?.streamUrl ?? "")}?autoplay=1`}
-                    title="HackForge Live Stream"
+                    title="HackAegis Live Stream"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />

@@ -57,18 +57,18 @@ export default function Home() {
 
       if (data.role === "admin") {
         setAdminToken(data.token);
-        setAuthTokenGetter(() => localStorage.getItem("hackforge_admin_token"));
+        setAuthTokenGetter(() => localStorage.getItem("hackaegis_admin_token"));
         toast({ title: "Admin Access Granted", description: "Welcome, Commander." });
         setLocation("/admin");
       } else if (data.role === "judge") {
         setJudgeToken(data.token);
-        setAuthTokenGetter(() => localStorage.getItem("hackforge_judge_token"));
+        setAuthTokenGetter(() => localStorage.getItem("hackaegis_judge_token"));
         toast({ title: "Judge Access Granted", description: `Welcome, ${data.label ?? "Judge"}!` });
         setLocation("/judges");
       } else {
         setToken(data.token);
-        setAuthTokenGetter(() => localStorage.getItem("hackforge_token"));
-        const teamMsg = data.team ? `Team: ${data.team.name}` : "Welcome to HackForge!";
+        setAuthTokenGetter(() => localStorage.getItem("hackaegis_token"));
+        const teamMsg = data.team ? `Team: ${data.team.name}` : "Welcome to HackAegis!";
         toast({ title: "Access Granted", description: teamMsg });
         setLocation("/watch");
       }
@@ -107,7 +107,7 @@ export default function Home() {
                 <span>System Online • {eventStatus?.phase ? eventStatus.phase.toUpperCase() : "AWAITING SIGNAL"}</span>
               </div>
               <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-3 font-display">
-                {activeHackathon?.name ?? eventStatus?.eventName ?? "HACKFORGE"}
+                {activeHackathon?.name ?? eventStatus?.eventName ?? "HACKAEGIS"}
               </h1>
               <p className="text-lg text-muted-foreground max-w-xl">
                 {activeHackathon?.tagline ?? eventStatus?.tagline ?? "Where hackers come to compete and organizers command the stage."}
@@ -143,7 +143,7 @@ export default function Home() {
                   <CardContent>
                     <form onSubmit={handleLogin} className="space-y-4">
                       <div className="space-y-2 relative">
-                        <Input placeholder="HACKFORGE_PART_... / ADMIN / JUDGE" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="font-mono text-center text-sm h-14 bg-background/50 border-primary/30 focus-visible:ring-primary uppercase tracking-widest pl-12" autoComplete="off" autoFocus />
+                        <Input placeholder="HACKAEGIS_PART_... / ADMIN / JUDGE" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="font-mono text-center text-sm h-14 bg-background/50 border-primary/30 focus-visible:ring-primary uppercase tracking-widest pl-12" autoComplete="off" autoFocus />
                         <Terminal className="absolute left-4 top-4 w-6 h-6 text-muted-foreground" />
                       </div>
                       <Button type="submit" className="w-full h-12 font-bold tracking-wide hover:-translate-y-0.5 transition-transform duration-300" size="lg" disabled={loading || !code.trim()}>
@@ -153,8 +153,8 @@ export default function Home() {
                     <div className="mt-5 space-y-2">
                       <p className="text-xs text-muted-foreground text-center font-mono uppercase tracking-wider mb-3">Code Format Guide</p>
                       <div className="grid grid-cols-1 gap-1.5 text-xs font-mono">
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Participant</span><span className="text-primary/80">HACKFORGE_PART_XXXXXXXXXX</span></div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Judge</span><span className="text-chart-2/80">HACKFORGE_JUDGE_XXXXXX</span></div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Participant</span><span className="text-primary/80">HACKAEGIS_PART_XXXXXXXXXX</span></div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Judge</span><span className="text-chart-2/80">HACKAEGIS_JUDGE_XXXXXX</span></div>
                         <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/40"><span className="text-muted-foreground w-20">Admin</span><span className="text-chart-4/80">Ask your event admin</span></div>
                       </div>
                       <p className="text-center text-xs text-muted-foreground pt-1">No code yet? <button className="text-primary hover:underline font-medium" onClick={() => {}}>Switch to Register tab</button></p>
@@ -170,7 +170,7 @@ export default function Home() {
                     <div className="space-y-3">
                       <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 lift-hover"><div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-primary text-xs font-bold">1</span></div><div><p className="text-sm font-semibold">Fill Registration Form</p><p className="text-xs text-muted-foreground">Name, team info, payment preference</p></div></div>
                       <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 lift-hover"><div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-primary text-xs font-bold">2</span></div><div><p className="text-sm font-semibold">Payment Verification</p><p className="text-xs text-muted-foreground">Admin verifies payment (offline / UPI)</p></div></div>
-                      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 lift-hover"><div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-primary text-xs font-bold">3</span></div><div><p className="text-sm font-semibold">Get Your Access Code</p><p className="text-xs text-muted-foreground">Receive <span className="font-mono text-primary text-[11px]">HACKFORGE_PART_XXXXXXXXXX</span> via email</p></div></div>
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 lift-hover"><div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-primary text-xs font-bold">3</span></div><div><p className="text-sm font-semibold">Get Your Access Code</p><p className="text-xs text-muted-foreground">Receive <span className="font-mono text-primary text-[11px]">HACKAEGIS_PART_XXXXXXXXXX</span> via email</p></div></div>
                     </div>
                     {activeHackathon && <div className="p-3 rounded-lg border border-chart-3/20 bg-chart-3/5 lift-hover"><div className="flex items-center gap-2"><Zap className="w-4 h-4 text-chart-3" /><p className="text-sm font-semibold text-chart-3">{activeHackathon.name} is LIVE</p></div>{activeHackathon.prizePool && <p className="text-xs text-muted-foreground mt-1">Prize Pool: {activeHackathon.prizePool}</p>}</div>}
                     <Button className="w-full h-12 font-bold gap-2 hover:-translate-y-0.5 transition-transform duration-300" onClick={() => setLocation("/register")}>

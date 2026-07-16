@@ -17,7 +17,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 
-const JUDGE_TOKEN_KEY = "hackforge_judge_token";
+const JUDGE_TOKEN_KEY = "hackaegis_judge_token";
 
 interface JudgeTeam {
   id: number; name: string; projectTitle: string; description: string | null;
@@ -199,7 +199,7 @@ function JudgeMeet({ roomName, displayName }: { roomName: string; displayName: s
         src={src}
         allow="camera; microphone; display-capture; fullscreen; autoplay"
         allowFullScreen
-        title="HackForge Judge Meet"
+        title="HackAegis Judge Meet"
       />
     </div>
   );
@@ -226,7 +226,7 @@ function JudgeLoginForm({ onLogin }: { onLogin: (token: string) => void }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? "Invalid code");
-      if (data.role !== "judge") throw new Error("This code is not a judge code. Please use a HACKFORGE_JUDGE@XX code.");
+      if (data.role !== "judge") throw new Error("This code is not a judge code. Please use a HACKAEGIS_JUDGE@XX code.");
       setJudgeToken(data.token);
       setAuthTokenGetter(() => localStorage.getItem(JUDGE_TOKEN_KEY));
       toast({ title: "Judge Access Granted", description: `Welcome, ${data.label ?? "Judge"}!` });
@@ -262,14 +262,14 @@ function JudgeLoginForm({ onLogin }: { onLogin: (token: string) => void }) {
                   <Input
                     value={code}
                     onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder="HACKFORGE_JUDGE@01"
+                    placeholder="HACKAEGIS_JUDGE@01"
                     className="font-mono text-sm pl-10 uppercase tracking-wider"
                     autoFocus
                     autoComplete="off"
                   />
                   <Terminal className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
                 </div>
-                <p className="text-xs text-muted-foreground font-mono">Format: HACKFORGE_JUDGE@XX</p>
+                <p className="text-xs text-muted-foreground font-mono">Format: HACKAEGIS_JUDGE@XX</p>
               </div>
               <Button type="submit" className="w-full bg-chart-2 hover:bg-chart-2/90 gap-2" disabled={loading || !code.trim()}>
                 {loading ? <span className="flex items-center gap-2">Verifying<span className="animate-pulse">...</span></span> : <><ArrowRight className="w-4 h-4" /> Access Judge Portal</>}
@@ -498,7 +498,7 @@ export default function Judges() {
                 <CardContent className="p-0">
                   {eventStatus?.streamUrl ? (
                     <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
-                      <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${extractYouTubeId(eventStatus.streamUrl)}?autoplay=1`} title="HackForge Live Stream" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                      <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${extractYouTubeId(eventStatus.streamUrl)}?autoplay=1`} title="HackAegis Live Stream" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">

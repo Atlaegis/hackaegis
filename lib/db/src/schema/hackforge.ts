@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, timestamp, integer, varchar, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp, integer, varchar, real, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -125,7 +125,8 @@ export const registrationsTable = pgTable("registrations", {
   teamName: varchar("team_name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 50 }),
   memberCount: integer("member_count").notNull().default(1),
-  paymentMode: varchar("payment_mode", { length: 20 }).notNull().default("offline"),
+  teamMembers: jsonb("team_members"),
+  paymentMode: varchar("payment_mode", { length: 20 }).notNull().default("upi"),
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"),
   notes: text("notes"),
   participantCode: varchar("participant_code", { length: 50 }),
@@ -166,7 +167,7 @@ export const eventConfigTable = pgTable("event_config", {
   streamActive: boolean("stream_active").notNull().default(false),
   resultsPublished: boolean("results_published").notNull().default(false),
   judgeResultsVisible: boolean("judge_results_visible").notNull().default(false),
-  eventName: varchar("event_name", { length: 255 }).notNull().default("HackForge 2025"),
+  eventName: varchar("event_name", { length: 255 }).notNull().default("HackAegis 2025"),
   tagline: varchar("tagline", { length: 500 }).notNull().default("Build. Improve. Pitch. Win."),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
