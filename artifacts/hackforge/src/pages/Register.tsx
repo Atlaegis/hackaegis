@@ -6,18 +6,39 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { motion, AnimatePresence } from "framer-motion";
-import { Users, Mail, Phone, Hash, Terminal, CheckCircle2, ArrowRight, ArrowLeft, Zap, Trophy, CreditCard, Smartphone } from "lucide-react";
+import { motion } from "framer-motion";
+import { Users, Mail, Phone, Hash, Terminal, CheckCircle2, ArrowRight, ArrowLeft, Zap, Trophy, CreditCard, Smartphone, GraduationCap, Building2, Lightbulb } from "lucide-react";
 
 interface ActiveHackathon {
   id: number; name: string; slug: string; tagline: string | null;
   prizePool: string | null; grandPrize: string | null; phase: string;
 }
 
+interface TeamMember {
+  fullName: string;
+  email: string;
+  phone: string;
+  college: string;
+  degree: string;
+  branch: string;
+  year: string;
+  city: string;
+}
+
 const PAYMENT_MODES = [
   { value: "upi", label: "UPI", icon: Smartphone, desc: "Google Pay, PhonePe, Paytm, etc." },
   { value: "online", label: "Online Payment", icon: CreditCard, desc: "Card / Net Banking (coming soon)" },
 ];
+
+const EMPTY_MEMBER: TeamMember = { fullName: "", email: "", phone: "", college: "", degree: "", branch: "", year: "", city: "" };
+
+const INITIAL_FORM = {
+  fullName: "", email: "", teamName: "", phone: "", memberCount: 1,
+  college: "", degree: "", branch: "", year: "", city: "",
+  paymentMode: "upi", notes: "",
+};
+
+const INITIAL_PROJECT = { domain: "", problemStatement: "", title: "", description: "" };
 
 export default function Register() {
   const [, setLocation] = useLocation();
@@ -27,19 +48,13 @@ export default function Register() {
   const [hackathon, setHackathon] = useState<ActiveHackathon | null>(null);
   const [regId, setRegId] = useState<number | null>(null);
 
-  const [form, setForm] = useState({
-    fullName: "",
-    email: "",
-    teamName: "",
-    phone: "",
-    memberCount: 1,
-    paymentMode: "upi",
-    notes: "",
-  });
+  const [form, setForm] = useState({ ...INITIAL_FORM });
 
-  const [teamMembers, setTeamMembers] = useState<Array<{ fullName: string; email: string; phone: string }>>([
-    { fullName: "", email: "", phone: "" }
-  ]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([{ ...EMPTY_MEMBER }]);
+
+  const [projectInfo, setProjectInfo] = useState({
+    ...INITIAL_PROJECT,
+  });
 
   useEffect(() => {
     fetch("/api/hackathons/active")
@@ -52,7 +67,7 @@ export default function Register() {
     setTeamMembers((prev) => {
       const newArr = [...prev];
       while (newArr.length < form.memberCount) {
-        newArr.push({ fullName: "", email: "", phone: "" });
+        newArr.push({ ...EMPTY_MEMBER });
       }
       return newArr.slice(0, form.memberCount);
     });
@@ -60,7 +75,7 @@ export default function Register() {
 
   const set = (k: string, v: string | number) => setForm((p) => ({ ...p, [k]: v }));
 
-  const updateMember = (idx: number, field: "fullName" | "email" | "phone", value: string) => {
+  const updateMember = (idx: number, field: keyof TeamMember, value: string) => {
     setTeamMembers((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
   };
 
@@ -78,6 +93,10 @@ export default function Register() {
       toast({ title: "Invalid email", variant: "destructive" });
       return;
     }
+    if (!form.college) {
+      toast({ title: "Missing education details", description: "College / University is required.", variant: "destructive" });
+      return;
+    }
     if (form.memberCount > 1) {
       for (let i = 1; i < teamMembers.length; i++) {
         if (!teamMembers[i].fullName || teamMembers[i].fullName.length < 2) {
@@ -88,18 +107,27 @@ export default function Register() {
           toast({ title: "Invalid email", description: `Member ${i + 1} has an invalid email.`, variant: "destructive" });
           return;
         }
+        if (!teamMembers[i].college) {
+          toast({ title: "Missing education details", description: `Member ${i + 1} needs a college name.`, variant: "destructive" });
+          return;
+        }
       }
     }
     setLoading(true);
     try {
+      const leaderMember: TeamMember = { fullName: form.fullName, email: form.email, phone: form.phone, college: form.college, degree: form.degree, branch: form.branch, year: form.year, city: form.city };
+      const membersPayload = form.memberCount > 1
+        ? teamMembers.map((m, i) => i === 0 ? leaderMember : m)
+        : [leaderMember];
+
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          teamMembers: form.memberCount > 1 ? teamMembers.map((m, i) =>
-            i === 0 ? { fullName: form.fullName, email: form.email, phone: form.phone } : m
-          ) : null,
+          teamMembers: membersPayload,
+
+          projectInfo: (projectInfo.domain || projectInfo.title || projectInfo.problemStatement || projectInfo.description) ? projectInfo : null,
           hackathonId: hackathon?.id ?? null,
         }),
       });
@@ -124,47 +152,21 @@ export default function Register() {
             </div>
           </div>
           <div>
-            <h2 className="font-mono text-2xl font-bold text-chart-3">REGISTERED!</h2>
-            <p className="text-muted-foreground mt-2">Your registration #{regId} has been submitted.</p>
+            <h2 className="font-mono text-2xl font-bold text-chart-3">Registration Successful!</h2>
+            <p className="text-muted-foreground mt-2">Registration #{regId}</p>
           </div>
           <Card className="border-chart-3/20 bg-chart-3/5 text-left">
             <CardContent className="pt-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-chart-3/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-chart-3 text-xs font-bold">1</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">Payment Verification</p>
-                  <p className="text-xs text-muted-foreground">
-                    Complete your UPI payment and share the screenshot with the organizer.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-chart-3/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-chart-3 text-xs font-bold">2</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">Admin Approval</p>
-                  <p className="text-xs text-muted-foreground">Admin will verify and generate your unique access code.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-chart-3/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-chart-3 text-xs font-bold">3</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">Get Your Code</p>
-                  <p className="text-xs text-muted-foreground">Your <span className="font-mono text-primary">HACKAEGIS_PART_XXXXXXXX</span> code will be shared with you via email.</p>
-                </div>
-              </div>
+              <p className="text-sm text-foreground">Thank you for registering for <span className="font-semibold text-primary">HackAegis</span>.</p>
+              <p className="text-sm text-muted-foreground">Your registration has been received successfully. You will receive your <span className="font-semibold text-primary">login credentials</span> and further event instructions on your registered email address shortly.</p>
+              <p className="text-xs text-muted-foreground/70 mt-2">Please keep an eye on your inbox (and spam folder) for future updates.</p>
             </CardContent>
           </Card>
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setLocation("/")}>
               <ArrowLeft className="w-4 h-4 mr-2" /> Back Home
             </Button>
-            <Button className="flex-1" onClick={() => { setStep("form"); setForm({ fullName: "", email: "", teamName: "", phone: "", memberCount: 1, paymentMode: "upi", notes: "" }); setTeamMembers([{ fullName: "", email: "", phone: "" }]); }}>
+            <Button className="flex-1" onClick={() => { setStep("form"); setForm({ ...INITIAL_FORM }); setTeamMembers([{ ...EMPTY_MEMBER }]); setProjectInfo({ ...INITIAL_PROJECT }); }}>
               Register Another
             </Button>
           </div>
@@ -177,6 +179,7 @@ export default function Register() {
     <div className="min-h-[calc(100vh-4rem)] bg-background py-10 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-2">
+          <img src="/logo.png" alt="HackAegis" className="w-16 h-16 rounded-lg mx-auto mb-2" />
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
             <Terminal className="w-4 h-4" />
             {hackathon ? hackathon.name : "HackAegis"}
@@ -199,20 +202,20 @@ export default function Register() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-5">
-                {/* Personal Info */}
+                {/* Team Leader */}
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Team Leader / Contact Person</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Team Leader / Contact Person</p>
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Full Name *</label>
+                      <label className="text-sm font-medium">Full Name *</label>
                       <Input value={form.fullName} onChange={(e) => set("fullName", e.target.value)} placeholder="Your full name" required />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email *</label>
+                      <label className="text-sm font-medium">Email *</label>
                       <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="you@example.com" required />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Phone</label>
+                      <label className="text-sm font-medium">Phone</label>
                       <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" />
                     </div>
                     <div className="space-y-1.5">
@@ -228,6 +231,35 @@ export default function Register() {
                   </div>
                 </div>
 
+                {/* Leader Education Details */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5"><GraduationCap className="w-3.5 h-3.5" /> Education Details (Team Leader)</p>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">College / University *</label>
+                      <Input value={form.college} onChange={(e) => set("college", e.target.value)} placeholder="Your college name" required />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Degree</label>
+                      <Input value={form.degree} onChange={(e) => set("degree", e.target.value)} placeholder="B.Tech / M.Tech / BCA..." />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Branch</label>
+                      <Input value={form.branch} onChange={(e) => set("branch", e.target.value)} placeholder="Computer Science / IT..." />
+                    </div>
+                    <div className="space-y-1.5 grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Year</label>
+                        <Input value={form.year} onChange={(e) => set("year", e.target.value)} placeholder="2nd / 3rd..." />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">City</label>
+                        <Input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="City" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Dynamic Team Members */}
                 {form.memberCount > 1 && (
                   <div>
@@ -238,7 +270,7 @@ export default function Register() {
                           <p className="text-xs font-medium mb-2 text-primary">
                             Member {idx + 1} {idx === 0 && "(Team Leader — auto-filled)"}
                           </p>
-                          <div className="grid sm:grid-cols-3 gap-3">
+                          <div className="grid sm:grid-cols-3 gap-3 mb-2">
                             <Input
                               value={idx === 0 ? form.fullName : member.fullName}
                               onChange={(e) => updateMember(idx, "fullName", e.target.value)}
@@ -261,6 +293,32 @@ export default function Register() {
                               disabled={idx === 0}
                             />
                           </div>
+                          <div className="grid sm:grid-cols-3 gap-3">
+                            <Input
+                              value={idx === 0 ? form.college : member.college}
+                              onChange={(e) => updateMember(idx, "college", e.target.value)}
+                              placeholder="College"
+                              disabled={idx === 0}
+                            />
+                            <Input
+                              value={idx === 0 ? form.degree : member.degree}
+                              onChange={(e) => updateMember(idx, "degree", e.target.value)}
+                              placeholder="Degree"
+                              disabled={idx === 0}
+                            />
+                            <Input
+                              value={idx === 0 ? form.branch : member.branch}
+                              onChange={(e) => updateMember(idx, "branch", e.target.value)}
+                              placeholder="Branch"
+                              disabled={idx === 0}
+                            />
+                          </div>
+                          {idx !== 0 && (
+                            <div className="grid sm:grid-cols-3 gap-3 mt-2">
+                              <Input value={member.year} onChange={(e) => updateMember(idx, "year", e.target.value)} placeholder="Year" />
+                              <Input value={member.city} onChange={(e) => updateMember(idx, "city", e.target.value)} placeholder="City" />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -269,10 +327,33 @@ export default function Register() {
 
                 {/* Team Info */}
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Team Information</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Team Information</p>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Team Name *</label>
                     <Input value={form.teamName} onChange={(e) => set("teamName", e.target.value)} placeholder="Your team name" required />
+                  </div>
+                </div>
+
+                {/* Project Information */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5"><Lightbulb className="w-3.5 h-3.5" /> Project Information</p>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Project Domain / Track</label>
+                      <Input value={projectInfo.domain} onChange={(e) => setProjectInfo((p) => ({ ...p, domain: e.target.value }))} placeholder="AI/ML, Web3, HealthTech..." />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Project Title</label>
+                      <Input value={projectInfo.title} onChange={(e) => setProjectInfo((p) => ({ ...p, title: e.target.value }))} placeholder="Your project title" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 mt-4">
+                    <label className="text-sm font-medium">Problem Statement</label>
+                    <Textarea value={projectInfo.problemStatement} onChange={(e) => setProjectInfo((p) => ({ ...p, problemStatement: e.target.value }))} placeholder="What problem are you solving?" rows={2} className="resize-none" />
+                  </div>
+                  <div className="space-y-1.5 mt-4">
+                    <label className="text-sm font-medium">Project Description</label>
+                    <Textarea value={projectInfo.description} onChange={(e) => setProjectInfo((p) => ({ ...p, description: e.target.value }))} placeholder="Brief description of your project approach..." rows={3} className="resize-none" />
                   </div>
                 </div>
 

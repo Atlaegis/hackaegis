@@ -325,7 +325,8 @@ interface Registration {
   phone: string | null; memberCount: number; paymentMode: string;
   paymentStatus: string; notes: string | null; participantCode: string | null;
   createdAt: string; hackathonId: number | null;
-  teamMembers: Array<{ fullName: string; email: string; phone: string }> | null;
+  teamMembers: Array<{ fullName: string; email: string; phone: string; college?: string; degree?: string; branch?: string; year?: string; city?: string }> | null;
+  projectInfo: { domain?: string; problemStatement?: string; title?: string; description?: string } | null;
 }
 
 function RegistrationsTab() {
@@ -400,11 +401,25 @@ function RegistrationsTab() {
                   {Array.isArray(reg.teamMembers) && reg.teamMembers.length > 0 && (
                     <div className="mt-2 space-y-0.5">
                       <p className="text-xs font-medium text-muted-foreground">Team Members:</p>
-                      {(reg.teamMembers as Array<{ fullName?: string; email?: string; phone?: string }>).map((m, i) => (
-                        <p key={i} className="text-xs text-muted-foreground pl-2">
-                          {i + 1}. {m?.fullName || "(unknown)"} ({m?.email || "—"}){m?.phone ? ` · ${m.phone}` : ""}
-                        </p>
+                      {reg.teamMembers.map((m, i) => (
+                        <div key={i} className="text-xs text-muted-foreground pl-2">
+                          <span>{i + 1}. {m?.fullName || "(unknown)"} ({m?.email || "—"}){m?.phone ? ` · ${m.phone}` : ""}</span>
+                          {(m?.college || m?.degree || m?.branch) && (
+                            <span className="ml-1 text-muted-foreground/60">— {[m.college, m.degree, m.branch, m.year].filter(Boolean).join(", ")}{m.city ? ` (${m.city})` : ""}</span>
+                          )}
+                        </div>
                       ))}
+                    </div>
+                  )}
+                  {reg.projectInfo && (reg.projectInfo.domain || reg.projectInfo.title || reg.projectInfo.problemStatement || reg.projectInfo.description) && (
+                    <div className="mt-2 space-y-0.5">
+                      <p className="text-xs font-medium text-muted-foreground">Project:</p>
+                      <div className="text-xs text-muted-foreground pl-2">
+                        {reg.projectInfo.title && <span className="font-medium">{reg.projectInfo.title}</span>}
+                        {reg.projectInfo.domain && <span className="ml-1 text-muted-foreground/60">[{reg.projectInfo.domain}]</span>}
+                        {reg.projectInfo.problemStatement && <p className="text-muted-foreground/70 mt-0.5">{reg.projectInfo.problemStatement}</p>}
+                        {reg.projectInfo.description && <p className="text-muted-foreground/70 mt-0.5">{reg.projectInfo.description}</p>}
+                      </div>
                     </div>
                   )}
                   {reg.participantCode && (

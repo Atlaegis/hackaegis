@@ -181,6 +181,7 @@ export const registrationsTable = pgTable("registrations", {
   phone: varchar("phone", { length: 50 }),
   memberCount: integer("member_count").notNull().default(1),
   teamMembers: jsonb("team_members"),
+  projectInfo: jsonb("project_info"),
   paymentMode: varchar("payment_mode", { length: 20 }).notNull().default("upi"),
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"),
   notes: text("notes"),

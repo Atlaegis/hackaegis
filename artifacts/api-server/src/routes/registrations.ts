@@ -26,7 +26,7 @@ function sanitizeString(val: unknown, maxLen: number): string {
 
 // ─── Public: submit registration ─────────────────────────────────────────────
 router.post("/register", registrationRateLimit, async (req: Request, res: Response) => {
-  const { hackathonId, fullName, email, teamName, phone, memberCount, paymentMode, notes, teamMembers } = req.body ?? {};
+  const { hackathonId, fullName, email, teamName, phone, memberCount, paymentMode, notes, teamMembers, projectInfo } = req.body ?? {};
 
   const cleanFullName = sanitizeString(fullName, 120);
   const cleanEmail = sanitizeString(email, 200).toLowerCase();
@@ -60,12 +60,17 @@ router.post("/register", registrationRateLimit, async (req: Request, res: Respon
     return;
   }
 
-  let cleanTeamMembers: Array<{ fullName: string; email: string; phone: string }> | null = null;
-  if (cleanMemberCount > 1 && Array.isArray(teamMembers) && teamMembers.length > 0) {
+  let cleanTeamMembers: Array<{ fullName: string; email: string; phone: string; college: string; degree: string; branch: string; year: string; city: string }> | null = null;
+  if (Array.isArray(teamMembers) && teamMembers.length > 0) {
     cleanTeamMembers = teamMembers.slice(0, cleanMemberCount).map((m: any) => ({
       fullName: sanitizeString(m?.fullName, 120),
       email: sanitizeString(m?.email, 200).toLowerCase(),
       phone: m?.phone ? sanitizeString(m.phone, 30) : "",
+      college: sanitizeString(m?.college, 200),
+      degree: sanitizeString(m?.degree, 100),
+      branch: sanitizeString(m?.branch, 100),
+      year: sanitizeString(m?.year, 20),
+      city: sanitizeString(m?.city, 100),
     }));
     for (let i = 0; i < cleanTeamMembers.length; i++) {
       const member = cleanTeamMembers[i];
@@ -77,6 +82,19 @@ router.post("/register", registrationRateLimit, async (req: Request, res: Respon
         res.status(400).json({ error: "validation_error", message: `Team member ${i + 1} has an invalid email address` });
         return;
       }
+    }
+  }
+
+  let cleanProjectInfo: { domain: string; problemStatement: string; title: string; description: string } | null = null;
+  if (projectInfo && typeof projectInfo === "object") {
+    const pi = {
+      domain: sanitizeString(projectInfo.domain, 200),
+      problemStatement: sanitizeString(projectInfo.problemStatement, 1000),
+      title: sanitizeString(projectInfo.title, 300),
+      description: sanitizeString(projectInfo.description, 2000),
+    };
+    if (pi.domain || pi.problemStatement || pi.title || pi.description) {
+      cleanProjectInfo = pi;
     }
   }
 
@@ -94,6 +112,7 @@ router.post("/register", registrationRateLimit, async (req: Request, res: Respon
     phone: cleanPhone,
     memberCount: cleanMemberCount,
     teamMembers: cleanTeamMembers,
+    projectInfo: cleanProjectInfo,
     paymentMode: cleanPaymentMode,
     paymentStatus: "pending",
     notes: cleanNotes,
@@ -117,6 +136,7 @@ router.get("/admin/registrations", async (req: Request, res: Response) => {
     phone: r.phone ?? null,
     memberCount: r.memberCount,
     teamMembers: r.teamMembers ?? null,
+    projectInfo: r.projectInfo ?? null,
     paymentMode: r.paymentMode,
     paymentStatus: r.paymentStatus,
     notes: r.notes ?? null,
