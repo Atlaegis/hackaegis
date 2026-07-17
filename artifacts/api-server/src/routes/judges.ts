@@ -64,11 +64,33 @@ router.get("/judges/me", async (req: Request, res: Response) => {
     code: stats.code.code,
     label: stats.code.label ?? stats.code.code,
     domain: stats.code.domain ?? null,
+    email: stats.code.email ?? null,
+    bio: stats.code.bio ?? null,
+    yearsOfExperience: stats.code.yearsOfExperience ?? null,
     isJudge: true,
     assignedTeams: stats.assignedTeams,
     completedEvaluations: stats.completedEvaluations,
     pendingEvaluations: stats.pendingEvaluations,
   });
+});
+
+// Update judge profile
+router.put("/judges/profile", async (req: Request, res: Response) => {
+  const session = await requireJudge(req, res);
+  if (!session) return;
+
+  const { bio, yearsOfExperience } = req.body ?? {};
+  const updateData: Record<string, unknown> = {};
+  if (bio !== undefined) updateData.bio = bio ? String(bio).trim().slice(0, 2000) : null;
+  if (yearsOfExperience !== undefined) updateData.yearsOfExperience = typeof yearsOfExperience === "number" && yearsOfExperience >= 0 ? yearsOfExperience : null;
+
+  if (Object.keys(updateData).length === 0) {
+    res.status(400).json({ error: "validation_error", message: "No fields to update" });
+    return;
+  }
+
+  const [updated] = await db.update(participationCodesTable).set(updateData).where(eq(participationCodesTable.id, session.codeId)).returning();
+  res.json({ id: updated.id, label: updated.label, domain: updated.domain ?? null, email: updated.email ?? null, bio: updated.bio ?? null, yearsOfExperience: updated.yearsOfExperience ?? null });
 });
 
 // Get judge dashboard data (home page)

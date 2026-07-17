@@ -743,13 +743,15 @@ function TeamsTab() {
 
 // ─── Judges Tab ────────────────────────────────────────────────────────────────
 function JudgesTab() {
-  const { data: codes, loading, refetch } = useAdminFetch<Array<{ id: number; code: string; label: string | null; domain: string | null; createdAt: string }>>("/api/codes/judges");
+  const { data: codes, loading, refetch } = useAdminFetch<Array<{ id: number; code: string; label: string | null; domain: string | null; email: string | null; bio: string | null; yearsOfExperience: number | null; createdAt: string }>>("/api/codes/judges");
   const { toast } = useToast();
   const token = localStorage.getItem("hackaegis_admin_token");
   const [newLabel, setNewLabel] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [newDomain, setNewDomain] = useState("");
   const [creating, setCreating] = useState(false);
   const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
+  const [expandedJudge, setExpandedJudge] = useState<number | null>(null);
 
   const DOMAINS = ["AI", "Machine Learning", "Blockchain", "FinTech", "Cybersecurity", "Web Development", "Mobile Development", "Cloud Computing", "IoT", "AR/VR", "Data Science", "DevOps", "Healthcare Tech", "EdTech", "Open Innovation"];
 
@@ -759,12 +761,13 @@ function JudgesTab() {
     try {
       const r = await fetch("/api/codes/judges", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ label: newLabel, domain: newDomain || null }),
+        body: JSON.stringify({ label: newLabel, domain: newDomain || null, email: newEmail || null }),
       });
       if (!r.ok) throw new Error("Failed to create judge");
       const created = await r.json();
       toast({ title: "Judge created", description: `${created.code}${newDomain ? ` (${newDomain})` : ""}` });
       setNewLabel("");
+      setNewEmail("");
       setNewDomain("");
       refetch();
     } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
@@ -776,13 +779,16 @@ function JudgesTab() {
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono">ADD JUDGE</CardTitle></CardHeader>
         <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input placeholder="Judge name *" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+            <Input placeholder="Email (optional)" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          </div>
           <div className="flex gap-3">
-            <Input placeholder="Judge name / label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
-            <select value={newDomain} onChange={(e) => setNewDomain(e.target.value)} className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <select value={newDomain} onChange={(e) => setNewDomain(e.target.value)} className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs">
               <option value="">No domain</option>
               {DOMAINS.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
-            <Button onClick={createJudge} disabled={creating || !newLabel}><Plus className="w-4 h-4 mr-1" /> Add</Button>
+            <Button onClick={createJudge} disabled={creating || !newLabel}><Plus className="w-4 h-4 mr-1" /> Add Judge</Button>
           </div>
         </CardContent>
       </Card>
@@ -798,16 +804,31 @@ function JudgesTab() {
                 }} onCancel={() => setConfirmDeleteCode(null)} />
               </div>
             ) : (
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <Scale className="w-4 h-4 text-chart-2 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm">{c.label ?? "Judge"}</p>
-                  <p className="font-mono text-xs text-muted-foreground">{c.code}</p>
+              <div>
+                <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setExpandedJudge(expandedJudge === c.id ? null : c.id)}>
+                  <Scale className="w-4 h-4 text-chart-2 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm">{c.label ?? "Judge"}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{c.code}</p>
+                  </div>
+                  {c.domain && <Badge variant="secondary" className="text-xs">{c.domain}</Badge>}
+                  {c.email && <span className="text-xs text-muted-foreground hidden sm:inline">{c.email}</span>}
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.code); toast({ title: "Code copied" }); }}><Copy className="w-3 h-3" /></Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={(e) => { e.stopPropagation(); setConfirmDeleteCode(c.code); }}><Trash2 className="w-3 h-3" /></Button>
                 </div>
-                {c.domain && <Badge variant="secondary" className="text-xs">{c.domain}</Badge>}
-                <Badge variant="outline" className="text-xs">JUDGE</Badge>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigator.clipboard.writeText(c.code)}><Copy className="w-3 h-3" /></Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => setConfirmDeleteCode(c.code)}><Trash2 className="w-3 h-3" /></Button>
+                {expandedJudge === c.id && (
+                  <div className="px-3 pb-3 pt-1 border-t border-border/50 space-y-2">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                      <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{c.label ?? "—"}</span></div>
+                      <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{c.email ?? "—"}</span></div>
+                      <div><span className="text-muted-foreground">Domain:</span> <span className="font-medium">{c.domain ?? "Not assigned"}</span></div>
+                      <div><span className="text-muted-foreground">Experience:</span> <span className="font-medium">{c.yearsOfExperience != null ? `${c.yearsOfExperience} years` : "—"}</span></div>
+                      <div className="col-span-2"><span className="text-muted-foreground">Code:</span> <span className="font-mono font-medium">{c.code}</span></div>
+                      <div className="col-span-2"><span className="text-muted-foreground">Created:</span> <span className="font-medium">{new Date(c.createdAt).toLocaleDateString()}</span></div>
+                      {c.bio && <div className="col-span-2 mt-1"><span className="text-muted-foreground">Bio:</span> <p className="mt-0.5 text-sm">{c.bio}</p></div>}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

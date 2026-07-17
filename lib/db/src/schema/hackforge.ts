@@ -41,6 +41,9 @@ export const participationCodesTable = pgTable("participation_codes", {
   usedAt: timestamp("used_at"),
   teamId: integer("team_id"),
   domain: varchar("domain", { length: 50 }),
+  email: varchar("email", { length: 255 }),
+  bio: text("bio"),
+  yearsOfExperience: integer("years_of_experience"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
