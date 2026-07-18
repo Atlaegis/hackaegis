@@ -457,6 +457,162 @@ function RegistrationsTab() {
 }
 
 // ─── Codes Tab ────────────────────────────────────────────────────────────────
+// ─── Team Credentials Card ───────────────────────────────────────────────────
+function TeamCredentialsCard({ teams }: { teams: Array<{ id: number; name: string }> }) {
+  const { toast } = useToast();
+  const [selectedTeamId, setSelectedTeamId] = useState<number | "">("");
+  const [teamLoginCode, setTeamLoginCode] = useState<string | null>(null);
+  const [meetCodes, setMeetCodes] = useState<Array<{ code: string; label: string | null }>>([]);
+  const [generating, setGenerating] = useState(false);
+  const [generatingMeet, setGeneratingMeet] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+
+  const loadTeamCodes = async (teamId: number) => {
+    setLoadingExisting(true);
+    try {
+      const data = await adminApi("GET", `/api/codes/team/${teamId}`);
+      setTeamLoginCode(data.teamLoginCode?.code ?? null);
+      setMeetCodes(data.meetCodes ?? []);
+    } catch {
+      setTeamLoginCode(null);
+      setMeetCodes([]);
+    } finally {
+      setLoadingExisting(false);
+    }
+  };
+
+  const handleTeamChange = (teamId: number | "") => {
+    setSelectedTeamId(teamId);
+    setTeamLoginCode(null);
+    setMeetCodes([]);
+    if (teamId !== "") loadTeamCodes(teamId);
+  };
+
+  const generateTeamLogin = async () => {
+    if (selectedTeamId === "") return;
+    setGenerating(true);
+    try {
+      const data = await adminApi("POST", "/api/codes/team-login", { teamId: selectedTeamId });
+      setTeamLoginCode(data.code);
+      toast({ title: "Team Login Code Generated", description: `Code: ${data.code}` });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to generate", variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateMeetCodes = async () => {
+    if (selectedTeamId === "") return;
+    setGeneratingMeet(true);
+    try {
+      const data = await adminApi("POST", "/api/codes/meet", { teamId: selectedTeamId });
+      setMeetCodes(data.codes ?? []);
+      toast({ title: "Meet Codes Generated", description: `${data.codes?.length ?? 0} codes created` });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to generate", variant: "destructive" });
+    } finally {
+      setGeneratingMeet(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied!" });
+  };
+
+  return (
+    <Card className="border-chart-2/30">
+      <CardHeader>
+        <CardTitle className="text-sm font-mono flex items-center gap-2">
+          <Key className="w-4 h-4 text-chart-2" />
+          TEAM CREDENTIALS
+        </CardTitle>
+        <CardDescription>Generate Team Login Code and Individual Meet Joining Codes for an approved team</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Team Selection */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Select Team</label>
+          <select
+            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+            value={selectedTeamId}
+            onChange={(e) => handleTeamChange(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
+          >
+            <option value="">— Select an approved team —</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+
+        {selectedTeamId !== "" && !loadingExisting && (
+          <div className="space-y-4 pt-2">
+            {/* Section 1: Team Login Code */}
+            <div className="rounded-lg border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-mono font-bold uppercase text-muted-foreground">Section 1 — Team Login Code</h4>
+                {!teamLoginCode && (
+                  <Button size="sm" onClick={generateTeamLogin} disabled={generating}>
+                    <Zap className="w-3 h-3 mr-1" /> {generating ? "Generating..." : "Generate"}
+                  </Button>
+                )}
+              </div>
+              {teamLoginCode ? (
+                <div className="flex items-center gap-2 bg-chart-2/5 border border-chart-2/20 rounded-lg px-3 py-2">
+                  <Shield className="w-4 h-4 text-chart-2 flex-shrink-0" />
+                  <span className="font-mono text-sm font-bold text-chart-2 flex-1">{teamLoginCode}</span>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard(teamLoginCode)}>
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No team login code generated yet. Click Generate to create one.</p>
+              )}
+              <p className="text-xs text-muted-foreground">This single code is shared by all team members. Max concurrent logins enforced by team size.</p>
+            </div>
+
+            {/* Section 2: Meet Codes */}
+            <div className="rounded-lg border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-mono font-bold uppercase text-muted-foreground">Section 2 — Individual Meet Joining Codes</h4>
+                {meetCodes.length === 0 && (
+                  <Button size="sm" variant="outline" onClick={generateMeetCodes} disabled={generatingMeet}>
+                    <Video className="w-3 h-3 mr-1" /> {generatingMeet ? "Generating..." : "Generate Meet Codes"}
+                  </Button>
+                )}
+              </div>
+              {meetCodes.length > 0 ? (
+                <div className="space-y-2">
+                  {meetCodes.map((mc, i) => (
+                    <div key={mc.code} className="flex items-center gap-2 bg-muted/30 rounded-md px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground w-6">#{i + 1}</span>
+                      <span className="font-mono text-xs flex-1">{mc.code}</span>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => copyToClipboard(mc.code)}>
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => copyToClipboard(meetCodes.map((m) => m.code).join("\n"))}>
+                    <Copy className="w-3 h-3 mr-1" /> Copy All Meet Codes
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No meet codes generated yet. Each team member gets a unique code for live sessions.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {loadingExisting && (
+          <div className="flex items-center justify-center py-4">
+            <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground ml-2">Loading existing codes...</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function CodesTab() {
   const { data: codes, refetch } = useListCodes();
   const generateCodes = useGenerateCodes();
@@ -507,6 +663,8 @@ function CodesTab() {
           </div>
         </CardContent>
       </Card>
+      <TeamCredentialsCard teams={(teams ?? []).filter((t: { status?: string }) => !t.status || t.status === "active")} />
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1460,6 +1618,224 @@ function AccessPortalTab() {
 }
 
 // ─── Logs Tab ─────────────────────────────────────────────────────────────────
+// ─── Content Management Tab ──────────────────────────────────────────────────
+function ContentTab() {
+  const { toast } = useToast();
+  const [activeSection, setActiveSection] = useState<"resources" | "announcements" | "certificates">("resources");
+
+  // Resources state
+  const { data: resources, loading: loadingRes, refetch: refetchRes } = useAdminFetch<Array<{ id: number; title: string; description: string | null; category: string; url: string | null; fileType: string | null; sortOrder: number; isPublished: boolean; createdAt: string }>>("/api/cms/resources");
+  const [newResource, setNewResource] = useState({ title: "", description: "", category: "general", url: "", fileType: "" });
+
+  // Announcements state
+  const { data: announcements, loading: loadingAnn, refetch: refetchAnn } = useAdminFetch<Array<{ id: number; title: string; content: string; priority: string; targetRole: string; isPublished: boolean; createdAt: string }>>("/api/cms/announcements");
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: "", content: "", priority: "normal", targetRole: "all" });
+
+  // Certificates state
+  const { data: certificates, loading: loadingCert, refetch: refetchCert } = useAdminFetch<Array<{ id: number; teamId: number; type: string; url: string | null; issuedAt: string }>>("/api/cms/certificates");
+  const [newCertificate, setNewCertificate] = useState({ teamId: "", type: "participation", url: "" });
+
+  const createResource = async () => {
+    if (!newResource.title) return;
+    try {
+      await adminApi("POST", "/api/cms/resources", newResource);
+      toast({ title: "Resource created" });
+      setNewResource({ title: "", description: "", category: "general", url: "", fileType: "" });
+      refetchRes();
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+    }
+  };
+
+  const deleteResource = async (id: number) => {
+    await adminApi("DELETE", `/api/cms/resources/${id}`);
+    toast({ title: "Resource deleted" });
+    refetchRes();
+  };
+
+  const createAnnouncement = async () => {
+    if (!newAnnouncement.title || !newAnnouncement.content) return;
+    try {
+      await adminApi("POST", "/api/cms/announcements", newAnnouncement);
+      toast({ title: "Announcement created" });
+      setNewAnnouncement({ title: "", content: "", priority: "normal", targetRole: "all" });
+      refetchAnn();
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+    }
+  };
+
+  const deleteAnnouncement = async (id: number) => {
+    await adminApi("DELETE", `/api/cms/announcements/${id}`);
+    toast({ title: "Announcement deleted" });
+    refetchAnn();
+  };
+
+  const createCertificate = async () => {
+    if (!newCertificate.teamId) return;
+    try {
+      await adminApi("POST", "/api/cms/certificates", { ...newCertificate, teamId: parseInt(newCertificate.teamId, 10) });
+      toast({ title: "Certificate created" });
+      setNewCertificate({ teamId: "", type: "participation", url: "" });
+      refetchCert();
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+    }
+  };
+
+  const deleteCertificate = async (id: number) => {
+    await adminApi("DELETE", `/api/cms/certificates/${id}`);
+    toast({ title: "Certificate deleted" });
+    refetchCert();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {(["resources", "announcements", "certificates"] as const).map((s) => (
+          <Button key={s} variant={activeSection === s ? "default" : "outline"} size="sm" onClick={() => setActiveSection(s)} className="capitalize">
+            {s}
+          </Button>
+        ))}
+      </div>
+
+      {activeSection === "resources" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">ADD RESOURCE</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Title" value={newResource.title} onChange={(e) => setNewResource({ ...newResource, title: e.target.value })} />
+              <Input placeholder="Description" value={newResource.description} onChange={(e) => setNewResource({ ...newResource, description: e.target.value })} />
+              <div className="flex gap-2">
+                <select className="h-9 rounded-md border border-input bg-background px-3 text-sm flex-1" value={newResource.category} onChange={(e) => setNewResource({ ...newResource, category: e.target.value })}>
+                  <option value="general">General</option>
+                  <option value="problem_statement">Problem Statement</option>
+                  <option value="rulebook">Rulebook</option>
+                  <option value="api">API</option>
+                  <option value="dataset">Dataset</option>
+                  <option value="template">Template</option>
+                  <option value="brand_asset">Brand Asset</option>
+                  <option value="faq">FAQ</option>
+                </select>
+                <Input placeholder="URL" value={newResource.url} onChange={(e) => setNewResource({ ...newResource, url: e.target.value })} className="flex-1" />
+              </div>
+              <Button onClick={createResource} size="sm"><Plus className="w-3 h-3 mr-1" /> Add Resource</Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">RESOURCES ({resources?.length ?? 0})</CardTitle></CardHeader>
+            <CardContent>
+              {loadingRes ? <p className="text-sm text-muted-foreground">Loading...</p> : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  {resources?.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/20">
+                      <div>
+                        <p className="text-sm font-medium">{r.title}</p>
+                        <p className="text-xs text-muted-foreground">{r.category} {r.url && `· ${r.url.slice(0, 40)}...`}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => deleteResource(r.id)}><Trash2 className="w-3 h-3" /></Button>
+                    </div>
+                  ))}
+                  {!resources?.length && <p className="text-sm text-muted-foreground text-center py-4">No resources yet.</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeSection === "announcements" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">CREATE ANNOUNCEMENT</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Title" value={newAnnouncement.title} onChange={(e) => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })} />
+              <Textarea placeholder="Content" value={newAnnouncement.content} onChange={(e) => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })} rows={3} />
+              <div className="flex gap-2">
+                <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={newAnnouncement.priority} onChange={(e) => setNewAnnouncement({ ...newAnnouncement, priority: e.target.value })}>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+                <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={newAnnouncement.targetRole} onChange={(e) => setNewAnnouncement({ ...newAnnouncement, targetRole: e.target.value })}>
+                  <option value="all">All</option>
+                  <option value="participant">Participants</option>
+                  <option value="judge">Judges</option>
+                </select>
+              </div>
+              <Button onClick={createAnnouncement} size="sm"><Plus className="w-3 h-3 mr-1" /> Post Announcement</Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">ANNOUNCEMENTS ({announcements?.length ?? 0})</CardTitle></CardHeader>
+            <CardContent>
+              {loadingAnn ? <p className="text-sm text-muted-foreground">Loading...</p> : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  {announcements?.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/20">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{a.title}</p>
+                          <Badge variant="outline" className="text-[10px]">{a.priority}</Badge>
+                          <Badge variant="secondary" className="text-[10px]">{a.targetRole}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{a.content}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => deleteAnnouncement(a.id)}><Trash2 className="w-3 h-3" /></Button>
+                    </div>
+                  ))}
+                  {!announcements?.length && <p className="text-sm text-muted-foreground text-center py-4">No announcements yet.</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeSection === "certificates" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">ISSUE CERTIFICATE</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Team ID" type="number" value={newCertificate.teamId} onChange={(e) => setNewCertificate({ ...newCertificate, teamId: e.target.value })} />
+              <div className="flex gap-2">
+                <select className="h-9 rounded-md border border-input bg-background px-3 text-sm flex-1" value={newCertificate.type} onChange={(e) => setNewCertificate({ ...newCertificate, type: e.target.value })}>
+                  <option value="participation">Participation</option>
+                  <option value="winner">Winner</option>
+                  <option value="runner_up">Runner Up</option>
+                  <option value="special_mention">Special Mention</option>
+                </select>
+                <Input placeholder="Certificate URL" value={newCertificate.url} onChange={(e) => setNewCertificate({ ...newCertificate, url: e.target.value })} className="flex-1" />
+              </div>
+              <Button onClick={createCertificate} size="sm"><Plus className="w-3 h-3 mr-1" /> Issue Certificate</Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-mono">CERTIFICATES ({certificates?.length ?? 0})</CardTitle></CardHeader>
+            <CardContent>
+              {loadingCert ? <p className="text-sm text-muted-foreground">Loading...</p> : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  {certificates?.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/20">
+                      <div>
+                        <p className="text-sm font-medium">Team #{c.teamId} — <Badge variant="outline" className="text-[10px]">{c.type}</Badge></p>
+                        <p className="text-xs text-muted-foreground">{c.url ? c.url.slice(0, 50) : "No URL"} · {new Date(c.issuedAt).toLocaleDateString()}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => deleteCertificate(c.id)}><Trash2 className="w-3 h-3" /></Button>
+                    </div>
+                  ))}
+                  {!certificates?.length && <p className="text-sm text-muted-foreground text-center py-4">No certificates issued yet.</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LogsTab() {
   const { data: logs } = useGetAdminLogs();
   return (
@@ -1518,6 +1894,7 @@ export default function Admin() {
     { value: "polls", label: "Polls", icon: BarChart2 },
     { value: "live", label: "Live", icon: Video },
     { value: "event", label: "Config", icon: Settings },
+    { value: "content", label: "Content", icon: FileText },
     { value: "portal", label: "Access Portal", icon: Eye },
     { value: "logs", label: "Logs", icon: ScrollText },
   ] as const;
@@ -1539,7 +1916,7 @@ export default function Admin() {
         </motion.div>
 
         <Tabs defaultValue="dashboard">
-          <TabsList className="grid grid-cols-6 md:grid-cols-12 h-auto gap-0.5 p-1">
+          <TabsList className="flex flex-wrap h-auto gap-0.5 p-1">
             {tabs.map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value} className="flex-col gap-0.5 h-auto py-2 text-[10px]">
                 <Icon className="w-3.5 h-3.5" />{label}
@@ -1557,6 +1934,7 @@ export default function Admin() {
             <TabsContent value="polls"><PollsTab /></TabsContent>
             <TabsContent value="live"><LiveTab /></TabsContent>
             <TabsContent value="event"><EventTab /></TabsContent>
+            <TabsContent value="content"><ContentTab /></TabsContent>
             <TabsContent value="portal"><AccessPortalTab /></TabsContent>
             <TabsContent value="logs"><LogsTab /></TabsContent>
           </div>

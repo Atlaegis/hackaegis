@@ -42,9 +42,9 @@ export function Navbar() {
     navLinks.push({ href: "/results", label: "Results", icon: <Trophy className="w-4 h-4 mr-2" /> });
   }
 
-  if (hasParticipantToken || me?.participantCode) navLinks.push({ href: "/watch", label: "Watch Live", icon: <Tv className="w-4 h-4 mr-2" /> });
+  if (hasParticipantToken || me?.participantCode) navLinks.push({ href: "/candidate", label: "Dashboard", icon: <Tv className="w-4 h-4 mr-2" /> });
   if (hasAdminToken || me?.isAdmin) navLinks.push({ href: "/admin", label: "Admin", icon: <LayoutDashboard className="w-4 h-4 mr-2" /> });
-  if (hasJudgeToken || (me as unknown as Record<string, unknown>)?.isJudge) navLinks.push({ href: "/judges", label: "Judge Portal", icon: <Scale className="w-4 h-4 mr-2" /> });
+  if ((hasJudgeToken || (me as unknown as Record<string, unknown>)?.isJudge) && !hasParticipantToken) navLinks.push({ href: "/judges", label: "Judge Portal", icon: <Scale className="w-4 h-4 mr-2" /> });
 
   const anyToken = hasParticipantToken || hasAdminToken || hasJudgeToken;
 

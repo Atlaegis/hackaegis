@@ -23,6 +23,26 @@ export function generateCode(): string {
   return generateParticipantCode();
 }
 
+/** Team code format: HACKAEGIS_TEAM_XXXXXXXXXX (10-char random suffix) */
+export function generateTeamCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let suffix = "";
+  for (let i = 0; i < 10; i++) {
+    suffix += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `HACKAEGIS_TEAM_${suffix}`;
+}
+
+/** Meet code format: HACKAEGIS_MEET_XXXXXXXX (8-char random suffix) */
+export function generateMeetCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let suffix = "";
+  for (let i = 0; i < 8; i++) {
+    suffix += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `HACKAEGIS_MEET_${suffix}`;
+}
+
 /** Generate a judge code with random suffix — not sequential */
 export function generateJudgeCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -38,9 +58,22 @@ export async function getSessionFromToken(token: string | undefined): Promise<ty
   const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.token, token));
   if (!session) return null;
 
+  // Reject and clean up sessions that have been explicitly logged out
+  if (session.loggedOutAt) {
+    await db.delete(sessionsTable).where(eq(sessionsTable.id, session.id));
+    return null;
+  }
+
+  // Reject and clean up sessions past their explicit expiry
+  if (session.expiresAt && new Date(session.expiresAt).getTime() < Date.now()) {
+    await db.delete(sessionsTable).where(eq(sessionsTable.id, session.id));
+    return null;
+  }
+
+  // Fallback: reject sessions older than the global TTL
   const age = Date.now() - new Date(session.createdAt).getTime();
   if (age > SESSION_TTL_MS) {
-    await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
+    await db.delete(sessionsTable).where(eq(sessionsTable.id, session.id));
     return null;
   }
 

@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, participationCodesTable, adminLogsTable } from "@workspace/db";
+import { db, participationCodesTable, adminLogsTable, teamsTable, meetCodesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { GenerateCodesBody } from "@workspace/api-zod";
-import { extractToken, getSessionFromToken, generateParticipantCode, generateJudgeCode } from "../lib/auth";
+import { extractToken, getSessionFromToken, generateParticipantCode, generateJudgeCode, generateTeamCode, generateMeetCode } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -164,6 +164,152 @@ router.delete("/codes/judges/:id", async (req: Request, res: Response) => {
   }
   await logAction("delete_judge_code", `Deleted judge code for: ${deleted.label ?? deleted.code}`);
   res.json({ success: true });
+});
+
+// ─── Generate Team Login Code ─────────────────────────────────────────────────
+router.post("/codes/team-login", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const teamId = parseInt(String(req.body?.teamId), 10);
+  if (isNaN(teamId)) {
+    res.status(400).json({ error: "validation_error", message: "teamId is required" });
+    return;
+  }
+
+  const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId));
+  if (!team) {
+    res.status(404).json({ error: "not_found", message: "Team not found" });
+    return;
+  }
+
+  if (team.status !== "active") {
+    res.status(400).json({ error: "invalid_status", message: "Team must be active to generate login codes" });
+    return;
+  }
+
+  // Check if a reusable participant code already exists for this team
+  const [existing] = await db
+    .select()
+    .from(participationCodesTable)
+    .where(
+      and(
+        eq(participationCodesTable.teamId, teamId),
+        eq(participationCodesTable.isReusable, true),
+        eq(participationCodesTable.role, "participant")
+      )
+    );
+
+  if (existing) {
+    res.json({ code: existing.code, teamId: team.id, teamName: team.name, maxMembers: team.maxMembers });
+    return;
+  }
+
+  let code = generateTeamCode();
+  let codeAttempts = 0;
+  while (codeAttempts < 20) {
+    const [dup] = await db.select({ id: participationCodesTable.id }).from(participationCodesTable).where(eq(participationCodesTable.code, code));
+    if (!dup) break;
+    code = generateTeamCode();
+    codeAttempts++;
+  }
+
+  await db.insert(participationCodesTable).values({
+    code,
+    role: "participant",
+    label: team.name,
+    isReusable: true,
+    isUsed: false,
+    teamId: team.id,
+  });
+
+  await logAction("generate_team_code", `Team login code for: ${team.name}`);
+  res.status(201).json({ code, teamId: team.id, teamName: team.name, maxMembers: team.maxMembers });
+});
+
+// ─── Generate Meet Codes ──────────────────────────────────────────────────────
+router.post("/codes/meet", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const teamId = parseInt(String(req.body?.teamId), 10);
+  if (isNaN(teamId)) {
+    res.status(400).json({ error: "validation_error", message: "teamId is required" });
+    return;
+  }
+
+  const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId));
+  if (!team) {
+    res.status(404).json({ error: "not_found", message: "Team not found" });
+    return;
+  }
+
+  if (team.status !== "active") {
+    res.status(400).json({ error: "invalid_status", message: "Team must be active to generate meet codes" });
+    return;
+  }
+
+  // Check if meet codes already exist (idempotent)
+  const existingCodes = await db
+    .select()
+    .from(meetCodesTable)
+    .where(eq(meetCodesTable.teamId, teamId));
+
+  if (existingCodes.length > 0) {
+    res.json({ teamId: team.id, codes: existingCodes.map((c) => ({ code: c.code, label: c.label })) });
+    return;
+  }
+
+  // Generate N codes (N = maxMembers)
+  const count = team.maxMembers;
+  const codes: { teamId: number; hackathonId: number | null; code: string; label: string }[] = [];
+  const usedCodes = new Set<string>();
+
+  for (let i = 0; i < count; i++) {
+    let code = generateMeetCode();
+    while (usedCodes.has(code)) code = generateMeetCode();
+    usedCodes.add(code);
+    codes.push({
+      teamId: team.id,
+      hackathonId: team.hackathonId ?? null,
+      code,
+      label: `Member ${i + 1}`,
+    });
+  }
+
+  await db.insert(meetCodesTable).values(codes);
+  await logAction("generate_meet_codes", `${count} meet codes for: ${team.name}`);
+  res.status(201).json({ teamId: team.id, codes: codes.map((c) => ({ code: c.code, label: c.label })) });
+});
+
+// ─── Get Team Codes (login + meet) ───────────────────────────────────────────
+router.get("/codes/team/:teamId", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const teamId = parseInt(String(req.params.teamId), 10);
+  if (isNaN(teamId)) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
+
+  const [teamLoginCode] = await db
+    .select()
+    .from(participationCodesTable)
+    .where(
+      and(
+        eq(participationCodesTable.teamId, teamId),
+        eq(participationCodesTable.isReusable, true),
+        eq(participationCodesTable.role, "participant")
+      )
+    );
+
+  const meetCodes = await db
+    .select()
+    .from(meetCodesTable)
+    .where(eq(meetCodesTable.teamId, teamId));
+
+  res.json({
+    teamLoginCode: teamLoginCode ? { id: teamLoginCode.id, code: teamLoginCode.code, label: teamLoginCode.label } : null,
+    meetCodes: meetCodes.map((c) => ({ id: c.id, code: c.code, label: c.label, isUsed: c.isUsed })),
+  });
 });
 
 export default router;

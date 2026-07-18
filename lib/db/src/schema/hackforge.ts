@@ -58,6 +58,8 @@ export const sessionsTable = pgTable("sessions", {
   codeId: integer("code_id").notNull().default(0),
   isAdmin: boolean("is_admin").notNull().default(false),
   isJudge: boolean("is_judge").notNull().default(false),
+  expiresAt: timestamp("expires_at"),
+  loggedOutAt: timestamp("logged_out_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -84,6 +86,7 @@ export const teamsTable = pgTable("teams", {
   isFinalist: boolean("is_finalist").notNull().default(false),
   domain: varchar("domain", { length: 50 }),
   status: varchar("status", { length: 20 }).notNull().default("active"),
+  maxMembers: integer("max_members").notNull().default(4),
   disqualifiedAt: timestamp("disqualified_at"),
   disqualifiedBy: integer("disqualified_by"),
   presentationSlot: timestamp("presentation_slot"),
@@ -214,6 +217,62 @@ export const votesTable = pgTable("votes", {
 });
 
 export type Vote = typeof votesTable.$inferSelect;
+
+// ─── Meet Codes (individual live meet joining codes per team member) ─────────
+export const meetCodesTable = pgTable("meet_codes", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  hackathonId: integer("hackathon_id"),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  label: varchar("label", { length: 255 }),
+  isUsed: boolean("is_used").notNull().default(false),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type MeetCode = typeof meetCodesTable.$inferSelect;
+
+// ─── Resources (admin-managed hackathon resources for candidates) ─────────────
+export const resourcesTable = pgTable("resources", {
+  id: serial("id").primaryKey(),
+  hackathonId: integer("hackathon_id"),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 50 }).notNull().default("general"),
+  url: text("url"),
+  fileType: varchar("file_type", { length: 20 }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isPublished: boolean("is_published").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Resource = typeof resourcesTable.$inferSelect;
+
+// ─── Announcements (for candidates) ──────────────────────────────────────────
+export const announcementsTable = pgTable("announcements", {
+  id: serial("id").primaryKey(),
+  hackathonId: integer("hackathon_id"),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  priority: varchar("priority", { length: 20 }).notNull().default("normal"),
+  targetRole: varchar("target_role", { length: 20 }).notNull().default("all"),
+  isPublished: boolean("is_published").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Announcement = typeof announcementsTable.$inferSelect;
+
+// ─── Certificates ────────────────────────────────────────────────────────────
+export const certificatesTable = pgTable("certificates", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  hackathonId: integer("hackathon_id"),
+  type: varchar("type", { length: 50 }).notNull().default("participation"),
+  url: text("url"),
+  issuedAt: timestamp("issued_at").notNull().defaultNow(),
+});
+
+export type Certificate = typeof certificatesTable.$inferSelect;
 
 // ─── Event Config (legacy — kept for OpenAPI compat) ─────────────────────────
 export const eventConfigTable = pgTable("event_config", {

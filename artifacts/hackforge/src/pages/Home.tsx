@@ -31,7 +31,7 @@ export default function Home() {
   useEffect(() => {
     if (getAdminToken()) { setLocation("/admin"); return; }
     if (getJudgeToken()) { setLocation("/judges"); return; }
-    if (getToken()) { setLocation("/watch"); return; }
+    if (getToken()) { setLocation("/candidate"); return; }
   }, []);
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function Home() {
         setAuthTokenGetter(() => localStorage.getItem("hackaegis_token"));
         const teamMsg = data.team ? `Team: ${data.team.name}` : "Welcome to HackAegis!";
         toast({ title: "Access Granted", description: teamMsg });
-        setLocation("/watch");
+        setLocation("/candidate");
       }
     } catch (err: unknown) {
       toast({

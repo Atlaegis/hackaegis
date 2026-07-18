@@ -12,6 +12,7 @@ import judgesRouter from "./judges";
 import submissionsRouter from "./submissions";
 import hackathonsRouter from "./hackathons";
 import registrationsRouter from "./registrations";
+import cmsRouter from "./cms";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(eventRouter);
 router.use(adminRouter);
 router.use(judgesRouter);
 router.use(submissionsRouter);
+router.use(cmsRouter);
 
 export default router;

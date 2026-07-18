@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import Watch from "@/pages/Watch";
 import Results from "@/pages/Results";
 import Admin from "@/pages/Admin";
 import JudgePortal from "./pages/judges/index";
+import CandidatePortal from "./pages/candidate/index";
 import Register from "@/pages/Register";
 import { WaveLoader } from "@/components/WaveLoader";
 
@@ -23,14 +24,19 @@ const queryClient = new QueryClient({
 });
 
 function Router() {
+  const [location] = useLocation();
+  const hideNavbar = location.startsWith("/candidate") || location.startsWith("/judges");
+
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar />
+      {!hideNavbar && <Navbar />}
       <main className="flex-1">
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/register" component={Register} />
-          <Route path="/watch" component={Watch} />
+          <Route path="/watch">{() => <Redirect to="/candidate/live" />}</Route>
+          <Route path="/candidate" component={CandidatePortal} />
+          <Route path="/candidate/:section" component={CandidatePortal} />
           <Route path="/results" component={Results} />
           <Route path="/results/:slug" component={Results} />
           <Route path="/admin" component={Admin} />

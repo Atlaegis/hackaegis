@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, participationCodesTable, sessionsTable, teamsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull, sql, count } from "drizzle-orm";
 import { VerifyParticipationCodeBody } from "@workspace/api-zod";
 import { generateToken, extractToken, getSessionFromToken } from "../lib/auth";
 import { authRateLimit } from "../middlewares/rateLimiter";
@@ -39,15 +39,69 @@ router.post("/auth/login", authRateLimit, async (req: Request, res: Response) =>
       .where(eq(participationCodesTable.id, found.id));
   }
 
+  // Enforce concurrent session limit for reusable team codes
   const isAdmin = found.role === "admin";
   const isJudge = found.role === "judge";
 
+  if (found.isReusable && found.teamId) {
+    const [teamRecord] = await db.select().from(teamsTable).where(eq(teamsTable.id, found.teamId));
+    const maxMembers = teamRecord?.maxMembers ?? 4;
+
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const inserted = await db.transaction(async (tx: typeof db) => {
+      // Lock the code row to serialize concurrent login attempts for the same team
+      await tx.execute(sql`SELECT 1 FROM participation_codes WHERE id = ${found.id} FOR UPDATE`);
+
+      const [result] = await tx
+        .select({ activeCount: count() })
+        .from(sessionsTable)
+        .where(
+          and(
+            eq(sessionsTable.codeId, found.id),
+            isNull(sessionsTable.loggedOutAt),
+            sql`(${sessionsTable.expiresAt} IS NULL OR ${sessionsTable.expiresAt} > NOW())`
+          )
+        );
+
+      if (Number(result?.activeCount ?? 0) >= maxMembers) {
+        return null;
+      }
+
+      await tx.insert(sessionsTable).values({
+        token,
+        codeId: found.id,
+        isAdmin,
+        isJudge,
+        expiresAt,
+      });
+
+      return token;
+    });
+
+    if (!inserted) {
+      res.status(403).json({ error: "team_full", message: "Maximum team login limit reached. A team member must log out first." });
+      return;
+    }
+
+    let team: { id: number; name: string; hackathonId: number | null } | null = null;
+    const [t] = await db.select().from(teamsTable).where(eq(teamsTable.id, found.teamId));
+    if (t) team = { id: t.id, name: t.name, hackathonId: t.hackathonId ?? null };
+
+    const redirectTo = "/candidate";
+    res.json({ token: inserted, role: found.role, label: found.label ?? null, redirectTo, team });
+    return;
+  }
+
   const token = generateToken();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   await db.insert(sessionsTable).values({
     token,
     codeId: found.id,
     isAdmin,
     isJudge,
+    expiresAt,
   });
 
   // Load team info if participant is linked to a team
@@ -57,7 +111,7 @@ router.post("/auth/login", authRateLimit, async (req: Request, res: Response) =>
     if (t) team = { id: t.id, name: t.name, hackathonId: t.hackathonId ?? null };
   }
 
-  const redirectTo = isAdmin ? "/admin" : isJudge ? "/judges" : "/watch";
+  const redirectTo = isAdmin ? "/admin" : isJudge ? "/judges" : "/candidate";
 
   res.json({
     token,
@@ -177,7 +231,10 @@ router.get("/auth/my-team", async (req: Request, res: Response) => {
 router.post("/auth/logout", async (req: Request, res: Response) => {
   const token = extractToken(req.headers.authorization);
   if (token) {
-    await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
+    await db
+      .update(sessionsTable)
+      .set({ loggedOutAt: new Date() })
+      .where(eq(sessionsTable.token, token));
   }
   res.json({ success: true, message: "Logged out" });
 });

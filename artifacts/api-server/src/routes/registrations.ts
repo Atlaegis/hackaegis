@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, registrationsTable, participationCodesTable, adminLogsTable, hackathonsTable, teamsTable } from "@workspace/db";
+import { db, registrationsTable, participationCodesTable, adminLogsTable, hackathonsTable, teamsTable, meetCodesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { extractToken, getSessionFromToken, generateParticipantCode } from "../lib/auth";
+import { extractToken, getSessionFromToken, generateParticipantCode, generateTeamCode, generateMeetCode } from "../lib/auth";
 import { registrationRateLimit } from "../middlewares/rateLimiter";
 
 const router: IRouter = Router();
@@ -166,13 +166,13 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
     return;
   }
 
-  // Generate a unique participant code
-  let code = generateParticipantCode();
+  // Generate a unique team login code (reusable by all team members)
+  let code = generateTeamCode();
   let attempts = 0;
   while (attempts < 20) {
     const [existing] = await db.select().from(participationCodesTable).where(eq(participationCodesTable.code, code));
     if (!existing) break;
-    code = generateParticipantCode();
+    code = generateTeamCode();
     attempts++;
   }
 
@@ -194,19 +194,34 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
       hackathonId: teamHackathonId,
       name: reg.teamName,
       projectTitle: "TBD",
+      maxMembers: reg.memberCount,
     }).returning();
     team = createdTeam;
   }
 
-  // Insert into participation_codes, linked directly to the team
+  // Insert reusable team login code, linked directly to the team
   await db.insert(participationCodesTable).values({
     code,
     role: "participant",
-    label: `${reg.fullName} (${reg.teamName})`,
-    isReusable: false,
+    label: reg.teamName,
+    isReusable: true,
     isUsed: false,
     teamId: team.id,
   });
+
+  // Auto-generate individual meet codes for each team member
+  const meetCodeCount = reg.memberCount;
+  const meetCodes: { teamId: number; hackathonId: number | null; code: string; label: string }[] = [];
+  const usedMeetCodes = new Set<string>();
+  for (let i = 0; i < meetCodeCount; i++) {
+    let meetCode = generateMeetCode();
+    while (usedMeetCodes.has(meetCode)) meetCode = generateMeetCode();
+    usedMeetCodes.add(meetCode);
+    meetCodes.push({ teamId: team.id, hackathonId: teamHackathonId, code: meetCode, label: `Member ${i + 1}` });
+  }
+  if (meetCodes.length > 0) {
+    await db.insert(meetCodesTable).values(meetCodes);
+  }
 
   // Update registration
   const [updated] = await db.update(registrationsTable)
@@ -214,8 +229,8 @@ router.post("/admin/registrations/:id/approve", async (req: Request, res: Respon
     .where(eq(registrationsTable.id, id))
     .returning();
 
-  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code assigned & linked to team #${team.id}`);
-  res.json({ message: "Approved", code: updated.participantCode, registration: updated, teamId: team.id });
+  await logAction("registration_approved", `Reg #${id} (${reg.teamName}) → code assigned & linked to team #${team.id}, ${meetCodes.length} meet codes generated`);
+  res.json({ message: "Approved", code: updated.participantCode, registration: updated, teamId: team.id, meetCodes: meetCodes.map((c) => c.code) });
 });
 
 // ─── Admin: reject registration ───────────────────────────────────────────────
