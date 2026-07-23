@@ -19,6 +19,11 @@ import DashboardSection from "./sections/DashboardSection";
 import EventsSection from "./sections/EventsSection";
 import RegistrationsSection from "./sections/RegistrationsSection";
 import TeamsSection from "./sections/TeamsSection";
+import JudgesSection from "./sections/JudgesSection";
+import ScoresSection from "./sections/ScoresSection";
+import PollsSection from "./sections/PollsSection";
+import LivestreamSection from "./sections/LivestreamSection";
+import AnnouncementsSection from "./sections/AnnouncementsSection";
 
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, group: "core" },
@@ -94,8 +99,18 @@ export default function AdminPanel() {
         return <RegistrationsSection />;
       case "teams":
         return <TeamsSection />;
+      case "judges":
+        return <JudgesSection />;
+      case "scores":
+        return <ScoresSection />;
+      case "polls":
+        return <PollsSection />;
+      case "live":
+        return <LivestreamSection />;
+      case "content":
+        return <AnnouncementsSection />;
       default:
-        // Legacy tabs - placeholder until Part 2
+        // Minor utility tabs - placeholder
         return (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground font-mono uppercase tracking-wider">
@@ -104,7 +119,7 @@ export default function AdminPanel() {
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <p className="text-sm font-mono">[ {activeSection.toUpperCase()} MODULE ]</p>
-                <p className="mt-2 text-xs">Coming in Part 2 - Legacy tab migration</p>
+                <p className="mt-2 text-xs">Utility module — coming soon</p>
               </CardContent>
             </Card>
           </div>
