@@ -112,7 +112,7 @@ function formatDate(dateStr: string | undefined | null): string {
 
 export default function JudgesSection() {
   const { data: judges, loading, refetch } = useAdminFetch<Judge[]>("/api/codes/judges");
-  const { data: scores } = useAdminFetch<TeamScore[]>("/api/admin/scores");
+  const { data: scoresResponse } = useAdminFetch<{ judgeCount: number; teams: TeamScore[] }>("/api/admin/scores");
   const { data: logs } = useAdminFetch<AdminLog[]>("/api/admin/logs");
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -129,7 +129,7 @@ export default function JudgesSection() {
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const allJudges = judges ?? [];
-  const allScores = scores ?? [];
+  const allScores = scoresResponse?.teams ?? [];
 
   // Compute judge evaluation data
   const judgeEvalMap = useMemo(() => {

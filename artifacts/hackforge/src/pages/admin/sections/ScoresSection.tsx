@@ -56,10 +56,10 @@ interface TeamScore {
   teamName: string;
   projectTitle: string;
   hackathonId: number;
-  averageScore: number;
-  averageInnovation: number;
-  averageExecution: number;
-  averagePresentation: number;
+  averageScore: number | null;
+  averageInnovation: number | null;
+  averageExecution: number | null;
+  averagePresentation: number | null;
   judgesScored: number;
   totalJudges: number;
   hasSubmission: boolean;
@@ -149,9 +149,9 @@ export default function ScoresSection() {
   // ─── Analytics ──────────────────────────────────────────────────────────────
 
   const analytics = useMemo(() => {
-    const scoredTeams = teams.filter((t) => t.judgesScored > 0);
+    const scoredTeams = teams.filter((t) => t.judgesScored > 0 && t.averageScore != null);
     const totalTeamsScored = scoredTeams.length;
-    const scores = scoredTeams.map((t) => t.averageScore);
+    const scores = scoredTeams.map((t) => t.averageScore as number);
     const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
     const completionRate =
@@ -162,9 +162,10 @@ export default function ScoresSection() {
     // Score distribution
     const distribution = { "0-25": 0, "25-50": 0, "50-75": 0, "75-100": 0 };
     scoredTeams.forEach((t) => {
-      if (t.averageScore < 25) distribution["0-25"]++;
-      else if (t.averageScore < 50) distribution["25-50"]++;
-      else if (t.averageScore < 75) distribution["50-75"]++;
+      const s = t.averageScore as number;
+      if (s < 25) distribution["0-25"]++;
+      else if (s < 50) distribution["25-50"]++;
+      else if (s < 75) distribution["50-75"]++;
       else distribution["75-100"]++;
     });
 
@@ -192,7 +193,7 @@ export default function ScoresSection() {
         case "name":
           return a.teamName.localeCompare(b.teamName);
         case "score":
-          return b.averageScore - a.averageScore;
+          return (b.averageScore ?? -1) - (a.averageScore ?? -1);
         case "progress":
           return b.judgesScored / (b.totalJudges || 1) - a.judgesScored / (a.totalJudges || 1);
         default:
@@ -220,12 +221,12 @@ export default function ScoresSection() {
     }
   }, [teams, refetch]);
 
-  const handleToggleJudgeVisibility = useCallback(async () => {
+  const handleToggleJudgeVisibility = useCallback(async (currentlyVisible: boolean) => {
     setPublishing(true);
     try {
       const hackathonId = teams[0]?.hackathonId;
       if (!hackathonId) return;
-      await adminApi("PUT", `/api/hackathons/${hackathonId}`, { judgeResultsVisible: true });
+      await adminApi("PUT", `/api/hackathons/${hackathonId}`, { judgeResultsVisible: !currentlyVisible });
       refetch();
     } catch (e) {
       console.error("Toggle judge visibility failed:", e);
@@ -249,12 +250,12 @@ export default function ScoresSection() {
 
     const rows = filteredTeams.map((team) => [
       team.rank,
-      `"${team.teamName}"`,
-      `"${team.projectTitle}"`,
-      team.averageScore.toFixed(2),
-      team.averageInnovation?.toFixed(2) ?? "0",
-      team.averageExecution?.toFixed(2) ?? "0",
-      team.averagePresentation?.toFixed(2) ?? "0",
+      `"${(team.teamName ?? "").replace(/"/g, '""')}"`,
+      `"${(team.projectTitle ?? "").replace(/"/g, '""')}"`,
+      team.averageScore != null ? team.averageScore.toFixed(2) : "N/A",
+      team.averageInnovation != null ? team.averageInnovation.toFixed(2) : "N/A",
+      team.averageExecution != null ? team.averageExecution.toFixed(2) : "N/A",
+      team.averagePresentation != null ? team.averagePresentation.toFixed(2) : "N/A",
       "N/A", // UI/UX - not in current API breakdown
       "N/A", // Presentation sub
       "N/A", // Completion
@@ -466,7 +467,7 @@ export default function ScoresSection() {
         description="This will make individual judge scores visible to judges. They will be able to see how other judges scored."
         confirmLabel={publishing ? "Updating..." : "Show Results"}
         variant="default"
-        onConfirm={handleToggleJudgeVisibility}
+        onConfirm={() => handleToggleJudgeVisibility(false)}
       />
     </div>
   );
@@ -563,10 +564,10 @@ function TeamScoreCard({ team, isExpanded, onToggleExpand }: TeamScoreCardProps)
               <div className="text-right min-w-[60px]">
                 <p
                   className={`text-2xl font-bold font-mono ${
-                    isUnscored ? "text-muted-foreground" : getScoreColor(team.averageScore, TOTAL_MAX_SCORE)
+                    isUnscored ? "text-muted-foreground" : getScoreColor(team.averageScore ?? 0, TOTAL_MAX_SCORE)
                   }`}
                 >
-                  {isUnscored ? "---" : team.averageScore.toFixed(1)}
+                  {isUnscored ? "---" : (team.averageScore ?? 0).toFixed(1)}
                 </p>
                 <p className="text-xs text-muted-foreground">/ {TOTAL_MAX_SCORE}</p>
               </div>
@@ -725,14 +726,14 @@ function ScoreBreakdown({ team }: { team: TeamScore }) {
               <Award className="w-4 h-4 text-primary" />
               Total Score
             </span>
-            <span className={`text-lg font-bold font-mono ${getScoreColor(team.averageScore, TOTAL_MAX_SCORE)}`}>
-              {team.averageScore > 0 ? team.averageScore.toFixed(1) : "---"} / {TOTAL_MAX_SCORE}
+            <span className={`text-lg font-bold font-mono ${getScoreColor(team.averageScore ?? 0, TOTAL_MAX_SCORE)}`}>
+              {(team.averageScore ?? 0) > 0 ? (team.averageScore ?? 0).toFixed(1) : "---"} / {TOTAL_MAX_SCORE}
             </span>
           </div>
           <div className="h-3 bg-muted rounded-full overflow-hidden mt-2">
             <motion.div
               initial={{ width: 0 }}
-              animate={{ width: `${(team.averageScore / TOTAL_MAX_SCORE) * 100}%` }}
+              animate={{ width: `${((team.averageScore ?? 0) / TOTAL_MAX_SCORE) * 100}%` }}
               transition={{ duration: 0.7, delay: 0.1 }}
               className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary"
             />

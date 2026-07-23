@@ -155,19 +155,23 @@ export default function LivestreamSection() {
     }
   }, [activeHackathon]);
 
-  // Initialize queue from finalist teams when they load
+  // Sync queue with finalist teams — add new finalists, preserve existing status
   useEffect(() => {
-    if (finalistTeams.length > 0 && queue.length === 0) {
-      setQueue(
-        finalistTeams.map((t) => ({
+    if (finalistTeams.length === 0) return;
+    setQueue((prev) => {
+      const existingIds = new Set(prev.map((q) => q.teamId));
+      const newEntries = finalistTeams
+        .filter((t) => !existingIds.has(t.id))
+        .map((t) => ({
           teamId: t.id,
           teamName: t.name,
           projectTitle: t.projectTitle,
           status: "waiting" as PresentationStatus,
-        }))
-      );
-    }
-  }, [finalistTeams, queue.length]);
+        }));
+      if (newEntries.length === 0 && prev.length > 0) return prev;
+      return [...prev, ...newEntries];
+    });
+  }, [finalistTeams]);
 
   // ─── Auto-refresh ───────────────────────────────────────────────────────────
 
@@ -184,7 +188,7 @@ export default function LivestreamSection() {
   // ─── Timer logic ────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (timerRunning && timerRemaining > 0) {
+    if (timerRunning) {
       timerRef.current = setInterval(() => {
         setTimerRemaining((prev) => {
           if (prev <= 1) {
@@ -198,7 +202,7 @@ export default function LivestreamSection() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [timerRunning, timerRemaining]);
+  }, [timerRunning]);
 
   const startTimer = useCallback(() => {
     const totalSeconds = timerDuration * 60;
