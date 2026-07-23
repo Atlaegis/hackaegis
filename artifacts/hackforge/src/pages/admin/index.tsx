@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import { useAuthTokens } from "@/lib/auth";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Terminal } from "lucide-react";
 import {
   LayoutDashboard, Globe, ClipboardList, Users,
@@ -24,6 +23,9 @@ import ScoresSection from "./sections/ScoresSection";
 import PollsSection from "./sections/PollsSection";
 import LivestreamSection from "./sections/LivestreamSection";
 import AnnouncementsSection from "./sections/AnnouncementsSection";
+import ConfigSection from "./sections/ConfigSection";
+import AccessPortalSection from "./sections/AccessPortalSection";
+import LogsSection from "./sections/LogsSection";
 
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, group: "core" },
@@ -109,21 +111,14 @@ export default function AdminPanel() {
         return <LivestreamSection />;
       case "content":
         return <AnnouncementsSection />;
+      case "config":
+        return <ConfigSection />;
+      case "portal":
+        return <AccessPortalSection />;
+      case "logs":
+        return <LogsSection />;
       default:
-        // Minor utility tabs - placeholder
-        return (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground font-mono uppercase tracking-wider">
-              {NAV_ITEMS.find((i) => i.id === activeSection)?.label ?? activeSection}
-            </p>
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <p className="text-sm font-mono">[ {activeSection.toUpperCase()} MODULE ]</p>
-                <p className="mt-2 text-xs">Utility module — coming soon</p>
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <DashboardSection onNavigate={handleNavigate} />;
     }
   };
 
