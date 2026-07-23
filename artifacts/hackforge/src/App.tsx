@@ -8,7 +8,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import Home from "@/pages/Home";
 import Watch from "@/pages/Watch";
 import Results from "@/pages/Results";
-import Admin from "@/pages/Admin";
+import Admin from "@/pages/admin/index";
 import JudgePortal from "./pages/judges/index";
 import CandidatePortal from "./pages/candidate/index";
 import Register from "@/pages/Register";
@@ -25,7 +25,7 @@ const queryClient = new QueryClient({
 
 function Router() {
   const [location] = useLocation();
-  const hideNavbar = location.startsWith("/candidate") || location.startsWith("/judges");
+  const hideNavbar = location.startsWith("/candidate") || location.startsWith("/judges") || location.startsWith("/admin");
 
   return (
     <div className="flex flex-col min-h-screen">
