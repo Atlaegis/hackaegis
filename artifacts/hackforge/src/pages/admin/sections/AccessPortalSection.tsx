@@ -85,8 +85,8 @@ interface AccessPortalData {
 }
 
 interface TeamCodeData {
-  teamLoginCode: string;
-  meetCodes: string[];
+  teamLoginCode: { id: number; code: string; label: string | null } | null;
+  meetCodes: Array<{ id: number; code: string; label: string | null; isUsed: boolean }>;
 }
 
 interface TeamEntry {
@@ -694,9 +694,9 @@ export default function AccessPortalSection() {
                   </div>
                   <div className="flex items-center gap-2">
                     <code className="text-sm font-mono bg-muted px-3 py-1.5 rounded flex-1">
-                      {teamCodes.teamLoginCode}
+                      {teamCodes.teamLoginCode?.code ?? "Not generated"}
                     </code>
-                    <CopyButton text={teamCodes.teamLoginCode} />
+                    {teamCodes.teamLoginCode && <CopyButton text={teamCodes.teamLoginCode.code} />}
                   </div>
                 </div>
 
@@ -722,12 +722,12 @@ export default function AccessPortalSection() {
                     <p className="text-xs text-muted-foreground">No meet codes generated yet.</p>
                   ) : (
                     <div className="space-y-2">
-                      {teamCodes.meetCodes.map((meetCode, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
+                      {teamCodes.meetCodes.map((meetCode) => (
+                        <div key={meetCode.id} className="flex items-center gap-2">
                           <code className="text-sm font-mono bg-muted px-3 py-1.5 rounded flex-1">
-                            {meetCode}
+                            {meetCode.code}
                           </code>
-                          <CopyButton text={meetCode} />
+                          <CopyButton text={meetCode.code} />
                         </div>
                       ))}
                     </div>
